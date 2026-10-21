@@ -64,29 +64,3 @@ myst_heading_anchors = 5
 # -- Copybutton configuration -------------------------------------------------
 copybutton_exclude = ".linenos, .gp"
 copybutton_selector = "div:not(.no-copybutton) > div.highlight > pre"
-
-# -- Homepage toctree ----------------------------------------------------------
-# The toctree is appended to the homepage (index.md) at build time.
-
-HOMEPAGE_TOCTREE = """
-
-```{toctree}
----
-hidden:
-includehidden:
-titlesonly:
-caption: Getting started
----
-prerequisites
-instructions
-```
-"""
-
-
-def _add_homepage_toctree(app, docname, source):
-    if docname == app.config.root_doc:
-        source[0] += HOMEPAGE_TOCTREE
-
-
-def setup(app):
-    app.connect("source-read", _add_homepage_toctree)
