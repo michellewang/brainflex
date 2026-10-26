@@ -20,7 +20,7 @@ class TestGetData:
     def test_get_data(
         self, runner: CliRunner, mock_get_data: MagicMock, tmp_path: Path
     ):
-        result = runner.invoke(app, ["get-data", "ds000001", str(tmp_path)])
+        result = runner.invoke(app, ["get-data", "ds000001", "--path", str(tmp_path)])
         assert result.exit_code == 0
         assert "Downloaded ds000001" in result.stdout
         mock_get_data.assert_called_once_with(
@@ -49,11 +49,41 @@ class TestGetData:
             full_freesurfer=False,
         )
 
+    @pytest.mark.parametrize("explicit", [True, False])
+    def test_subdirectory(
+        self,
+        runner: CliRunner,
+        mock_get_data: MagicMock,
+        tmp_path: Path,
+        dpath_subdir: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        explicit: bool,
+    ):
+        monkeypatch.chdir(dpath_subdir)
+        result = runner.invoke(
+            app,
+            [
+                "get-data",
+                "ds000001",
+                *(["--path", str(dpath_subdir)] if explicit else []),
+            ],
+        )
+        assert result.exit_code == 0
+        mock_get_data.assert_called_once_with(
+            tmp_path.resolve(),
+            "ds000001",
+            overwrite=False,
+            full_rawbids=False,
+            full_freesurfer=False,
+        )
+
     @pytest.mark.parametrize("flag", ["--overwrite", "--force", "-f"])
     def test_overwrite(
         self, runner: CliRunner, mock_get_data: MagicMock, tmp_path: Path, flag: str
     ):
-        result = runner.invoke(app, ["get-data", "ds000001", str(tmp_path), flag])
+        result = runner.invoke(
+            app, ["get-data", "ds000001", "--path", str(tmp_path), flag]
+        )
         assert result.exit_code == 0
         mock_get_data.assert_called_once_with(
             tmp_path.resolve(),
@@ -75,7 +105,9 @@ class TestGetData:
         flag: str,
         kwarg: str,
     ):
-        result = runner.invoke(app, ["get-data", "ds000001", str(tmp_path), flag])
+        result = runner.invoke(
+            app, ["get-data", "ds000001", "--path", str(tmp_path), flag]
+        )
         assert result.exit_code == 0
         assert mock_get_data.call_args.kwargs[kwarg] is True
 
@@ -83,7 +115,7 @@ class TestGetData:
         self, runner: CliRunner, mock_get_data: MagicMock, tmp_path: Path
     ):
         mock_get_data.side_effect = FileExistsError("Dataset already exists")
-        result = runner.invoke(app, ["get-data", "ds000001", str(tmp_path)])
+        result = runner.invoke(app, ["get-data", "ds000001", "--path", str(tmp_path)])
         assert result.exit_code == 1
         assert "already exists" in result.stderr
         assert "--overwrite" in result.stderr
@@ -104,6 +136,6 @@ class TestGetData:
         message: str,
     ):
         mock_get_data.side_effect = error
-        result = runner.invoke(app, ["get-data", "ds000001", str(tmp_path)])
+        result = runner.invoke(app, ["get-data", "ds000001", "--path", str(tmp_path)])
         assert result.exit_code == 1
         assert message in result.stderr

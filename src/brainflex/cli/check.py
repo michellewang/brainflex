@@ -1,22 +1,15 @@
 """CLI for ``brainflex check``."""
 
 from pathlib import Path
-from typing import Annotated
 
 import typer
 
+from brainflex.cli.options import RootOption
 from brainflex.core.check import check
 
 
 def check_cli(
-    path: Annotated[
-        Path,
-        typer.Argument(
-            file_okay=False,
-            resolve_path=True,
-            help="Project root directory.",
-        ),
-    ] = Path(),
+    path: RootOption = Path(),
 ) -> None:
     """Check that prerequisites are satisfied."""
     failed = False
