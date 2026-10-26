@@ -17,7 +17,7 @@ def mock_check(mocker: MockerFixture) -> MagicMock:
 class TestCheck:
     def test_path(self, runner: CliRunner, mock_check: MagicMock, tmp_path: Path):
         mock_check.return_value = []
-        result = runner.invoke(app, ["check", str(tmp_path)])
+        result = runner.invoke(app, ["check", "--path", str(tmp_path)])
         assert result.exit_code == 0
         mock_check.assert_called_once_with(tmp_path.resolve())
 
@@ -31,6 +31,24 @@ class TestCheck:
         monkeypatch.chdir(tmp_path)
         mock_check.return_value = []
         result = runner.invoke(app, ["check"])
+        assert result.exit_code == 0
+        mock_check.assert_called_once_with(tmp_path.resolve())
+
+    @pytest.mark.parametrize("explicit", [True, False])
+    def test_subdirectory(
+        self,
+        runner: CliRunner,
+        mock_check: MagicMock,
+        tmp_path: Path,
+        dpath_subdir: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        explicit: bool,
+    ):
+        monkeypatch.chdir(dpath_subdir)
+        mock_check.return_value = []
+        result = runner.invoke(
+            app, ["check", *(["--path", str(dpath_subdir)] if explicit else [])]
+        )
         assert result.exit_code == 0
         mock_check.assert_called_once_with(tmp_path.resolve())
 
