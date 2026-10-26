@@ -171,7 +171,7 @@ class TestNipoppy2fedbiomed:
         df = pd.read_csv(fpath_csv)
         assert list(df.columns) == ["nb:Age", "nb:Sex", "Left-Hippocampus", "lh_insula"]
         assert df["nb:Age"].tolist() == [20.5, 30.0, 40.0]
-        assert df["nb:Sex"].tolist() == [MALE, FEMALE, MALE]
+        assert df["nb:Sex"].tolist() == [0, 1, 0]
         assert df["Left-Hippocampus"].tolist() == [4000.0, 4100.0, 4200.0]
         assert df["lh_insula"].tolist() == [2.5, 2.6, 2.7]
 
@@ -243,6 +243,26 @@ class TestNipoppy2fedbiomed:
             nipoppy_root, output_dir, ["nb:Age", "nb:Sex"], DERIVATIVES, ["tag"]
         )
         assert pd.read_csv(fpath_csv)["nb:Age"].tolist() == [20.5, 40.0]
+        assert "Dropped 1 rows with missing values" in capsys.readouterr().out
+
+    def test_drops_other_sex(
+        self,
+        module: ModuleType,
+        nipoppy_root: Path,
+        output_dir: Path,
+        capsys: pytest.CaptureFixture,
+    ):
+        fpath_harmonized = nipoppy_root / "tabular" / "harmonized.tsv"
+        df = pd.read_csv(fpath_harmonized, sep="\t", dtype=str)
+        df.loc[1, "nb:Sex"] = "snomed:32570681000036106"
+        df.to_csv(fpath_harmonized, sep="\t", index=False)
+
+        fpath_csv, _ = module.nipoppy2fedbiomed(
+            nipoppy_root, output_dir, ["nb:Age", "nb:Sex"], [], ["tag"]
+        )
+        df = pd.read_csv(fpath_csv)
+        assert df["nb:Age"].tolist() == [20.5, 40.0]
+        assert df["nb:Sex"].tolist() == [0, 0]
         assert "Dropped 1 rows with missing values" in capsys.readouterr().out
 
     def test_all_missing(

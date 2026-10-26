@@ -12,6 +12,11 @@ FNAME_CSV = "dataset.csv"
 FNAME_JSON = "dataset_info.json"
 FEDBIOMED_DATA_TYPE = "csv"
 FEDBIOMED_MIN_LENGTH = 3  # for tags, name and description
+TERMURL_SEX = "nb:Sex"
+SEX_ENCODING = {
+    "snomed:248153007": 0,  # male
+    "snomed:248152002": 1,  # female
+}
 
 try:
     from nipoppy import NipoppyDataRetriever
@@ -105,12 +110,17 @@ def nipoppy2fedbiomed(
         phenotypes=phenotypes or None,
         derivatives=[tuple(derivative) for derivative in derivatives] or None,
     )
+    if TERMURL_SEX in df.columns:
+        # other values become missing and are dropped below
+        df[TERMURL_SEX] = df[TERMURL_SEX].map(SEX_ENCODING)
     n_rows = len(df)
     df = df.dropna(axis="index", how="any")
     if df.empty:
         raise ValueError(f"No rows without missing values in {nipoppy_root}")
     if n_dropped := n_rows - len(df):
         print(f"Dropped {n_dropped} rows with missing values")
+    if TERMURL_SEX in df.columns:
+        df[TERMURL_SEX] = df[TERMURL_SEX].astype(int)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     fpath_csv = output_dir / FNAME_CSV
