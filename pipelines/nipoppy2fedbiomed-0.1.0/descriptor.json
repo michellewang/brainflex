@@ -1,0 +1,102 @@
+{
+    "name": "nipoppy2fedbiomed",
+    "description": "Export tabular data from a Nipoppy study for a Fed-BioMed node.",
+    "tool-version": "0.1.0",
+    "schema-version": "0.5",
+    "command-line": "python [SCRIPT_PATH] [NIPOPPY_ROOT] [OUTPUT_DIR] [PHENOTYPE] [DERIVATIVE] [TAG] [NAME] [DESCRIPTION] [HELP]",
+    "inputs": [
+        {
+            "id": "script_path",
+            "name": "script_path",
+            "type": "String",
+            "value-key": "[SCRIPT_PATH]",
+            "description": "Path to the nipoppy2fedbiomed.py script."
+        },
+        {
+            "id": "nipoppy_root",
+            "name": "nipoppy_root",
+            "type": "String",
+            "value-key": "[NIPOPPY_ROOT]",
+            "description": "Root directory of the Nipoppy study."
+        },
+        {
+            "id": "output_dir",
+            "name": "output_dir",
+            "type": "String",
+            "value-key": "[OUTPUT_DIR]",
+            "description": "Directory to write the CSV and JSON files to."
+        },
+        {
+            "id": "phenotype",
+            "name": "phenotype",
+            "type": "String",
+            "value-key": "[PHENOTYPE]",
+            "description": "Neurobagel TermURL of a phenotypic column in tabular/harmonized.tsv (e.g. nb:Age). Can be repeated.",
+            "optional": true,
+            "list": true,
+            "list-separator": " --phenotype ",
+            "command-line-flag": "--phenotype"
+        },
+        {
+            "id": "derivative",
+            "name": "derivative",
+            "type": "String",
+            "value-key": "[DERIVATIVE]",
+            "description": "Derivative TSV file to include, where FILEPATH_PATTERN is a glob pattern relative to the pipeline's derivatives directory (e.g. freesurfer:7.3.2:idp/*-aseg-volume.tsv). Can be repeated.",
+            "optional": true,
+            "list": true,
+            "list-separator": " --derivative ",
+            "command-line-flag": "--derivative"
+        },
+        {
+            "id": "tag",
+            "name": "tag",
+            "type": "String",
+            "value-key": "[TAG]",
+            "description": "Fed-BioMed dataset tag. Can be repeated.",
+            "list": true,
+            "list-separator": " --tag ",
+            "command-line-flag": "--tag"
+        },
+        {
+            "id": "name",
+            "name": "name",
+            "type": "String",
+            "value-key": "[NAME]",
+            "description": "Fed-BioMed dataset name. Default: name of the Nipoppy root directory.",
+            "optional": true,
+            "command-line-flag": "--name"
+        },
+        {
+            "id": "description",
+            "name": "description",
+            "type": "String",
+            "value-key": "[DESCRIPTION]",
+            "description": "Fed-BioMed dataset description.",
+            "optional": true,
+            "command-line-flag": "--description"
+        },
+        {
+            "id": "help",
+            "name": "help",
+            "type": "Flag",
+            "value-key": "[HELP]",
+            "description": "show this help message and exit",
+            "optional": true,
+            "command-line-flag": "--help"
+        }
+    ],
+    "groups": [
+        {
+            "id": "data_sources",
+            "name": "data_sources",
+            "description": "At least one phenotype or derivative must be specified",
+            "members": [
+                "phenotype",
+                "derivative"
+            ],
+            "one-is-required": true
+        }
+    ],
+    "tags": {}
+}
