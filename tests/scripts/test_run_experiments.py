@@ -18,13 +18,13 @@ GLOBAL_STATS = {
     "mean": {
         "nb:Age": np.float64(30.0),
         "nb:Sex": np.float64(0.5),
-        "lh_insula_thickness": np.float64(2.5),
+        "Left-Thalamus": np.float64(7000.0),
         "Left-Hippocampus": np.float64(4000.0),
     },
     "std": {
         "nb:Age": np.float64(10.0),
         "nb:Sex": np.float64(0.5),
-        "lh_insula_thickness": np.float64(0.5),
+        "Left-Thalamus": np.float64(50.0),
         "Left-Hippocampus": np.float64(100.0),
     },
 }
@@ -64,8 +64,21 @@ def analytics() -> MagicMock:
 
 
 @pytest.fixture
+def dpath_fbm_tensorboard(tmp_path: Path) -> Path:
+    """Fed-BioMed experiment TensorBoard directory with one log dir per node."""
+    dpath = tmp_path / "fbm-researcher" / "tensorboard"
+    for node in ["NODE_1", "NODE_2"]:
+        (dpath / node).mkdir(parents=True)
+        (dpath / node / "events.out.tfevents").touch()
+    return dpath
+
+
+@pytest.fixture
 def mock_experiment(
-    module: ModuleType, mocker: MockerFixture, analytics: MagicMock
+    module: ModuleType,
+    mocker: MockerFixture,
+    analytics: MagicMock,
+    dpath_fbm_tensorboard: Path,
 ) -> MagicMock:
     mock_experiment = mocker.patch.object(module, "Experiment")
     exp = mock_experiment.return_value
@@ -77,6 +90,7 @@ def mock_experiment(
     ).dict()
     exp.monitor.return_value._metric_store = NODE_METRICS
     exp.save_training_replies.return_value = TRAINING_REPLIES
+    exp.tensorboard_results_path = str(dpath_fbm_tensorboard)
     return mock_experiment
 
 
@@ -93,7 +107,7 @@ def fpath_csv(tmp_path: Path) -> Path:
             "nb:Age": [20.0, 30.0, 40.0],
             "nb:Sex": [0, 1, 1],
             "Left-Hippocampus": [4100.0, 4000.0, 3900.0],
-            "lh_insula_thickness": [2.0, 2.5, 3.0],
+            "Left-Thalamus": [6950.0, 7000.0, 7050.0],
         }
     ).to_csv(fpath, index=False)
     return fpath
@@ -140,22 +154,17 @@ class TestFilterFeatureCol:
         [
             "nb:Age",
             "nb:Sex",
-            "lh_insula_thickness",
-            "rh_precuneus_thickness",
             "EstimatedTotalIntraCranialVol",
             "Left-Hippocampus",
             "Right-Accumbens-area",
         ],
     )
     def test_included(self, module: ModuleType, col: str):
-        assert module.filter_feature_col(col)
+        assert module._filter_feature_col(col)
 
     @pytest.mark.parametrize(
         "col",
         [
-            "lh_MeanThickness_thickness",
-            "rh_MeanThickness_thickness",
-            "rh_temporalpole_thickness",
             "Left-WM-hypointensities",
             "non-WM-hypointensities",
             "CSF",
@@ -165,7 +174,7 @@ class TestFilterFeatureCol:
         ],
     )
     def test_excluded(self, module: ModuleType, col: str):
-        assert not module.filter_feature_col(col)
+        assert not module._filter_feature_col(col)
 
 
 class TestGetFeatureStats:
@@ -173,9 +182,9 @@ class TestGetFeatureStats:
         columns, mean, std, excluded_columns = module._get_feature_stats(
             analytics, "nb:Age"
         )
-        assert columns == ["Left-Hippocampus", "lh_insula_thickness", "nb:Sex"]
-        assert mean == [4000.0, 2.5, 0.5]
-        assert std == [100.0, 0.5, 0.5]
+        assert columns == ["Left-Hippocampus", "Left-Thalamus", "nb:Sex"]
+        assert mean == [4000.0, 7000.0, 0.5]
+        assert std == [100.0, 50.0, 0.5]
         assert not excluded_columns
         analytics.fetch_stats.assert_called_once_with(["mean", "std"])
 
@@ -183,14 +192,14 @@ class TestGetFeatureStats:
         stats = {
             "mean": GLOBAL_STATS["mean"]
             | {
-                "Left-Thalamus": 0.0,
-                "lh_cuneus_thickness": 1.0,
+                "Left-Caudate": 0.0,
+                "Right-Putamen": 1.0,
                 "lhSurfaceHoles": 20.0,
             },
             "std": GLOBAL_STATS["std"]
             | {
-                "Left-Thalamus": 0.0,
-                "lh_cuneus_thickness": np.nan,
+                "Left-Caudate": 0.0,
+                "Right-Putamen": np.nan,
                 "lhSurfaceHoles": 5.0,
             },
         }
@@ -198,13 +207,13 @@ class TestGetFeatureStats:
         columns, mean, std, excluded_columns = module._get_feature_stats(
             analytics, "nb:Age"
         )
-        assert columns == ["Left-Hippocampus", "lh_insula_thickness", "nb:Sex"]
+        assert columns == ["Left-Hippocampus", "Left-Thalamus", "nb:Sex"]
         assert len(mean) == len(std) == 3
         assert excluded_columns == {
             "not in feature column list": ["lhSurfaceHoles"],
             "zero or infinite standard deviation": [
-                "Left-Thalamus",
-                "lh_cuneus_thickness",
+                "Left-Caudate",
+                "Right-Putamen",
             ],
         }
 
@@ -270,6 +279,34 @@ class TestSerialize:
             module._serialize(object())
 
 
+class TestMoveTensorboardLogs:
+    def test_move(
+        self, module: ModuleType, dpath_fbm_tensorboard: Path, tmp_path: Path
+    ):
+        exp = MagicMock(tensorboard_results_path=str(dpath_fbm_tensorboard))
+        dpath_tensorboard = tmp_path / "age" / "tensorboard"
+        module._move_tensorboard_logs(exp, dpath_tensorboard)
+        exp.monitor.return_value.close_writer.assert_called_once()
+        assert sorted(p.name for p in dpath_tensorboard.iterdir()) == [
+            "NODE_1",
+            "NODE_2",
+        ]
+        assert (dpath_tensorboard / "NODE_1" / "events.out.tfevents").exists()
+        assert not any(dpath_fbm_tensorboard.iterdir())
+
+    def test_overwrite_node_dir(
+        self, module: ModuleType, dpath_fbm_tensorboard: Path, tmp_path: Path
+    ):
+        exp = MagicMock(tensorboard_results_path=str(dpath_fbm_tensorboard))
+        dpath_tensorboard = tmp_path / "tensorboard"
+        (dpath_tensorboard / "NODE_1").mkdir(parents=True)
+        (dpath_tensorboard / "NODE_1" / "old").touch()
+        module._move_tensorboard_logs(exp, dpath_tensorboard)
+        assert [p.name for p in (dpath_tensorboard / "NODE_1").iterdir()] == [
+            "events.out.tfevents"
+        ]
+
+
 class TestRunTask:
     def test_run_task(
         self, module: ModuleType, mock_experiment: MagicMock, tmp_path: Path
@@ -291,6 +328,7 @@ class TestRunTask:
 
         assert mock_experiment.call_args.kwargs["tags"] == ["brainflex", "age"]
         assert mock_experiment.call_args.kwargs["round_limit"] == 3
+        assert mock_experiment.call_args.kwargs["tensorboard"] is False
         training_args = TrainingArgs(mock_experiment.call_args.kwargs["training_args"])
         assert training_args["loader_args"] == {"batch_size": 8}
         assert training_args["num_updates"] == 10
@@ -313,7 +351,7 @@ class TestRunTask:
         assert model_args["eta0"] == 0.1
         assert model_args["feature_columns"] == [
             "Left-Hippocampus",
-            "lh_insula_thickness",
+            "Left-Thalamus",
             "nb:Sex",
         ]
         exp.set_model_args.assert_called_once_with(model_args)
@@ -347,20 +385,40 @@ class TestRunTask:
         assert json_data["settings"]["model_args"]["n_classes"] == 2
         assert "results" not in json_data
 
+    def test_tensorboard(
+        self, module: ModuleType, mock_experiment: MagicMock, tmp_path: Path
+    ):
+        dpath_tensorboard = tmp_path / "age" / "tensorboard"
+        module._run_task(
+            "age",
+            n_rounds=1,
+            batch_size=8,
+            n_updates=10,
+            learning_rate=0.1,
+            test_ratio=0.2,
+            settings={},
+            fpath_results=tmp_path / "age" / "results.json",
+            fpath_model=tmp_path / "age" / "model.pkl",
+            dpath_tensorboard=dpath_tensorboard,
+        )
+        assert mock_experiment.call_args.kwargs["tensorboard"] is True
+        assert (dpath_tensorboard / "NODE_2").is_dir()
 
-def _get_fpath_model(module: ModuleType, dpath: Path, task: str) -> Path:
-    """Model path for the default CLI arguments."""
-    return module._get_fpath_out(
+
+def _write_results(module: ModuleType, dpath: Path, task: str, data: dict) -> None:
+    """Write a results file for the default CLI arguments."""
+    fpath = module._get_fpath_out(
         dpath,
         task,
-        module.PREFIX_MODEL,
+        module.PREFIX_RESULTS,
         n_rounds=module.DEFAULT_N_ROUNDS,
         batch_size=module.DEFAULT_BATCH_SIZE,
         n_updates=module.DEFAULT_N_UPDATES,
         learning_rate=module.DEFAULT_LEARNING_RATE,
         test_ratio=module.DEFAULT_TEST_RATIO,
-        extension=".pkl",
     )
+    fpath.parent.mkdir(parents=True)
+    fpath.write_text(json.dumps(data))
 
 
 class TestMain:
@@ -380,29 +438,43 @@ class TestMain:
         assert kwargs["fpath_results"].name.startswith("results-2rounds-")
         assert kwargs["fpath_model"].name.startswith("model-2rounds-")
         assert kwargs["fpath_model"].suffix == ".pkl"
+        assert kwargs["dpath_tensorboard"].parent == tmp_path.resolve() / "age"
+        assert kwargs["dpath_tensorboard"].name.startswith("tensorboard-2rounds-")
         settings = kwargs["settings"]
         assert settings["output_dir"] == tmp_path.resolve()
         assert settings["tasks"] == ["sex", "age"]
         assert settings["n_rounds"] == 2
         assert settings["learning_rate"] == module.DEFAULT_LEARNING_RATE
         assert settings["overwrite"] is False
+        assert settings["tensorboard"] is True
 
-    def test_existing_model(
+    def test_no_tensorboard(
         self, module: ModuleType, mock_run_task: MagicMock, tmp_path: Path
     ):
-        fpath_model = _get_fpath_model(module, tmp_path.resolve(), "age")
-        fpath_model.parent.mkdir()
-        fpath_model.touch()
+        module.main([str(tmp_path), "--task", "age", "--no-tensorboard"])
+        assert mock_run_task.call_args.kwargs["dpath_tensorboard"] is None
+        assert mock_run_task.call_args.kwargs["settings"]["tensorboard"] is False
+
+    def test_existing_results(
+        self, module: ModuleType, mock_run_task: MagicMock, tmp_path: Path
+    ):
+        _write_results(module, tmp_path.resolve(), "age", {"results": {}})
         with pytest.raises(SystemExit, match="--overwrite"):
             module.main([str(tmp_path), "--task", "sex", "--task", "age"])
         mock_run_task.assert_not_called()
 
+    def test_existing_settings_only(
+        self, module: ModuleType, mock_run_task: MagicMock, tmp_path: Path
+    ):
+        # a run that failed before any results were saved can be rerun
+        _write_results(module, tmp_path.resolve(), "age", {"settings": {}})
+        module.main([str(tmp_path), "--task", "age"])
+        mock_run_task.assert_called_once()
+
     def test_overwrite(
         self, module: ModuleType, mock_run_task: MagicMock, tmp_path: Path
     ):
-        fpath_model = _get_fpath_model(module, tmp_path.resolve(), "age")
-        fpath_model.parent.mkdir()
-        fpath_model.touch()
+        _write_results(module, tmp_path.resolve(), "age", {"results": {}})
         module.main([str(tmp_path), "--task", "age", "--overwrite"])
         mock_run_task.assert_called_once()
 

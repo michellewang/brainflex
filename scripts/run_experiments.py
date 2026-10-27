@@ -6,6 +6,7 @@ import argparse
 import importlib.util
 import json
 import math
+import shutil
 import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -20,6 +21,7 @@ from fedbiomed.researcher.federated_workflows import Experiment, FederatedAnalyt
 DPATH_TRAINING_PLANS = Path(__file__).resolve().parents[1] / "training_plans"
 PREFIX_MODEL = "model"
 PREFIX_RESULTS = "results"
+PREFIX_TENSORBOARD = "tensorboard"
 COMMON_TAG = "brainflex"
 
 DEFAULT_N_ROUNDS = 10
@@ -103,6 +105,12 @@ def _get_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Overwrite existing results.",
     )
+    parser.add_argument(
+        "--tensorboard",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Save node metrics as TensorBoard logs. Default: True.",
+    )
     return parser
 
 
@@ -134,6 +142,7 @@ def _filter_feature_col(col: str) -> bool:
     if col.startswith("nb:"):
         return True
     elif col.endswith("_thickness"):
+        # return False
         return not (
             col
             in [
@@ -249,6 +258,18 @@ def _build_model_args(
     }
 
 
+def _move_tensorboard_logs(exp: Experiment, dpath_tensorboard: Path) -> None:
+    """Move the per-node logs out of the Fed-BioMed experiment directory."""
+    # flush the event files before moving them
+    exp.monitor().close_writer()
+    dpath_tensorboard.mkdir(parents=True, exist_ok=True)
+    for dpath_node_src in Path(exp.tensorboard_results_path).glob("*"):
+        dpath_node_dest = dpath_tensorboard / dpath_node_src.name
+        if dpath_node_dest.exists():
+            shutil.rmtree(dpath_node_dest)
+        shutil.move(dpath_node_src, dpath_node_dest)
+
+
 def _run_task(
     task: str,
     n_rounds: int,
@@ -259,6 +280,7 @@ def _run_task(
     settings: dict,
     fpath_results: Path,
     fpath_model: Path,
+    dpath_tensorboard: Path | None = None,
 ) -> BaseTrainingPlan:
     """Train a model for a task and save it in a task-specific output directory."""
     config = TASKS[task]
@@ -274,6 +296,7 @@ def _run_task(
             # NOTE: if Leave-one-node-out CV, set shuffle_testing_dataset=True
         },
         round_limit=n_rounds,
+        tensorboard=dpath_tensorboard is not None,
     )
 
     # the training plan needs the feature stats to be instantiated
@@ -312,6 +335,10 @@ def _run_task(
         _save_json(fpath_results, json_data)
     print(f"[{task}] Saved settings and results to {fpath_results}")
 
+    if dpath_tensorboard is not None:
+        _move_tensorboard_logs(exp, dpath_tensorboard)
+        print(f"[{task}] Saved TensorBoard logs to {dpath_tensorboard}")
+
     fpath_model.parent.mkdir(parents=True, exist_ok=True)
     exp.training_plan().export_model(str(fpath_model))
     print(f"[{task}] Saved global model to {fpath_model}")
@@ -327,6 +354,7 @@ def run_experiments(
     learning_rate: float = DEFAULT_LEARNING_RATE,
     test_ratio: float = DEFAULT_TEST_RATIO,
     overwrite: bool = False,
+    tensorboard: bool = True,
 ) -> None:
     """Train and save a global model for each task."""
     output_dir = output_dir.resolve()
@@ -334,6 +362,7 @@ def run_experiments(
 
     fpaths_results = []
     fpaths_model = []
+    dpaths_tensorboard = []
     for task in tasks:
         fpaths_results.append(
             _get_fpath_out(
@@ -361,6 +390,21 @@ def run_experiments(
                 extension=".pkl",
             )
         )
+        dpaths_tensorboard.append(
+            _get_fpath_out(
+                output_dir=output_dir,
+                task=task,
+                prefix=PREFIX_TENSORBOARD,
+                n_rounds=n_rounds,
+                batch_size=batch_size,
+                n_updates=n_updates,
+                learning_rate=learning_rate,
+                test_ratio=test_ratio,
+                extension="",
+            )
+            if tensorboard
+            else None
+        )
 
     # error out if one of the result files already exists
     fpaths_results_existing = [
@@ -374,7 +418,9 @@ def run_experiments(
             " Use --overwrite to overwrite them"
         )
 
-    for task, fpath_results, fpath_model in zip(tasks, fpaths_results, fpaths_model):
+    for task, fpath_results, fpath_model, dpath_tensorboard in zip(
+        tasks, fpaths_results, fpaths_model, dpaths_tensorboard
+    ):
         _run_task(
             task=task,
             n_rounds=n_rounds,
@@ -385,6 +431,7 @@ def run_experiments(
             settings=settings,
             fpath_results=fpath_results,
             fpath_model=fpath_model,
+            dpath_tensorboard=dpath_tensorboard,
         )
 
 
@@ -400,6 +447,7 @@ def main(argv: list[str] | None = None) -> None:
             learning_rate=args.learning_rate,
             test_ratio=args.test_ratio,
             overwrite=args.overwrite,
+            tensorboard=args.tensorboard,
         )
     except FileExistsError as e:
         sys.exit(f"Error: {e}")
