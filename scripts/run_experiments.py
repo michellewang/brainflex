@@ -8,15 +8,17 @@ import json
 import math
 import sys
 from dataclasses import dataclass, field
+from enum import Enum
 from pathlib import Path
 
+import numpy as np
 from fedbiomed.common.metrics import MetricTypes
 from fedbiomed.common.training_plans import BaseTrainingPlan
 from fedbiomed.researcher.federated_workflows import Experiment, FederatedAnalytics
 
 DPATH_TRAINING_PLANS = Path(__file__).resolve().parents[1] / "training_plans"
 FNAME_MODEL = "model.pkl"
-FNAME_MODEL_ARGS = "model_args.json"
+FNAME_RESULTS = "results.json"
 COMMON_TAG = "brainflex"
 
 
@@ -83,7 +85,30 @@ def _get_parser() -> argparse.ArgumentParser:
         default=0.2,
         help="Fraction of node data for validation. Default: 0.2.",
     )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Overwrite existing results.",
+    )
     return parser
+
+
+def _serialize(obj: object) -> object:
+    if isinstance(obj, Enum):
+        return obj.name
+    if isinstance(obj, Path):
+        return str(obj)
+    if isinstance(obj, (np.ndarray, np.generic)):
+        return obj.tolist()
+    if isinstance(obj, set):
+        return sorted(obj)
+    raise TypeError(f"Type {type(obj)} not serializable")
+
+
+def _save_json(fpath: Path, data: dict) -> None:
+    fpath.write_text(
+        json.dumps(data, indent=4, allow_nan=False, default=_serialize) + "\n"
+    )
 
 
 def _load_training_plan_class(module_name: str, class_name: str) -> type:
@@ -154,6 +179,7 @@ def _run_task(
     num_updates: int,
     learning_rate: float,
     test_ratio: float,
+    settings: dict,
 ) -> BaseTrainingPlan:
     """Train a model for a task and save it in a task-specific output directory."""
     config = TASKS[task]
@@ -182,15 +208,32 @@ def _run_task(
         )
     )
 
+    dpath_task = output_dir / task
+    dpath_task.mkdir(parents=True, exist_ok=True)
+    fpath_results = dpath_task / FNAME_RESULTS
+    # saved before training so that they are available even if training fails
+    json_data = {
+        "settings": {
+            "runtime_args": settings,
+            "model_args": exp.model_args(),
+            "training_args": exp.training_args(),
+        }
+    }
+    _save_json(fpath_results, json_data)
+
     for round_ in range(1, rounds + 1):
         print(f"[{task}] Round {round_}/{rounds}")
         exp.run_once()
+        json_data["results"] = {
+            # node training losses and test metrics (no public getter)
+            "node_metrics": exp.monitor()._metric_store,
+            "training_replies": exp.save_training_replies(),
+        }
+        _save_json(fpath_results, json_data)
+    print(f"[{task}] Saved settings and results to {fpath_results}")
 
-    dpath_task = output_dir / task
-    dpath_task.mkdir(parents=True, exist_ok=True)
     fpath_model = dpath_task / FNAME_MODEL
     exp.training_plan().export_model(str(fpath_model))
-    (dpath_task / FNAME_MODEL_ARGS).write_text(json.dumps(model_args, indent=4) + "\n")
     print(f"[{task}] Saved global model to {fpath_model}")
     return exp.training_plan()
 
@@ -203,8 +246,30 @@ def run_experiments(
     num_updates: int = 50,
     learning_rate: float = 0.01,
     test_ratio: float = 0.2,
+    overwrite: bool = False,
 ) -> None:
     """Train and save a global model for each task."""
+    settings = {
+        "output_dir": output_dir,
+        "tasks": tasks,
+        "rounds": rounds,
+        "batch_size": batch_size,
+        "num_updates": num_updates,
+        "learning_rate": learning_rate,
+        "test_ratio": test_ratio,
+        "overwrite": overwrite,
+    }
+    
+    # error out if one of the result files already exists
+    fpaths_existing = [
+        fpath for task in tasks if (fpath := output_dir / task / FNAME_RESULTS).exists()
+    ]
+    if fpaths_existing and not overwrite:
+        raise FileExistsError(
+            f"Results already exist: {[str(fpath) for fpath in fpaths_existing]}."
+            " Use --overwrite to overwrite them"
+        )
+
     for task in tasks:
         _run_task(
             task,
@@ -214,20 +279,25 @@ def run_experiments(
             num_updates=num_updates,
             learning_rate=learning_rate,
             test_ratio=test_ratio,
+            settings=settings,
         )
 
 
 def main(argv: list[str] | None = None) -> None:
     args = _get_parser().parse_args(argv)
-    run_experiments(
-        args.output_dir,
-        args.tasks,
-        rounds=args.rounds,
-        batch_size=args.batch_size,
-        num_updates=args.num_updates,
-        learning_rate=args.learning_rate,
-        test_ratio=args.test_ratio,
-    )
+    try:
+        run_experiments(
+            args.output_dir,
+            args.tasks,
+            rounds=args.rounds,
+            batch_size=args.batch_size,
+            num_updates=args.num_updates,
+            learning_rate=args.learning_rate,
+            test_ratio=args.test_ratio,
+            overwrite=args.overwrite,
+        )
+    except FileExistsError as e:
+        sys.exit(f"Error: {e}")
 
 
 if __name__ == "__main__":

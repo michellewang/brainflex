@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import sys
+from enum import Enum
 from pathlib import Path
 from types import ModuleType
 from unittest.mock import MagicMock
@@ -27,6 +28,14 @@ GLOBAL_STATS = {
         "Left-Hippocampus": np.float64(100.0),
     },
 }
+NODE_METRICS = {
+    "NODE_1": {
+        "testing_global_updates": {
+            "MEAN_SQUARE_ERROR": {1: {"iterations": [1], "values": [12.5]}}
+        }
+    }
+}
+TRAINING_REPLIES = {0: {"NODE_1": {"success": True, "sample_size": 80}}}
 
 
 @pytest.fixture
@@ -59,7 +68,15 @@ def mock_experiment(
     module: ModuleType, mocker: MockerFixture, analytics: MagicMock
 ) -> MagicMock:
     mock_experiment = mocker.patch.object(module, "Experiment")
-    mock_experiment.return_value.analytics = analytics
+    exp = mock_experiment.return_value
+    exp.analytics = analytics
+    # mimic the getters of a real Experiment
+    exp.model_args.side_effect = lambda: exp.set_model_args.call_args.args[0]
+    exp.training_args.side_effect = lambda: TrainingArgs(
+        mock_experiment.call_args.kwargs["training_args"]
+    ).dict()
+    exp.monitor.return_value._metric_store = NODE_METRICS
+    exp.save_training_replies.return_value = TRAINING_REPLIES
     return mock_experiment
 
 
@@ -156,10 +173,30 @@ class TestBuildModelArgs:
         assert model_args["eta0"] == 0.1
 
 
+class TestSerialize:
+    @pytest.mark.parametrize(
+        "obj,expected",
+        [
+            (Enum("Color", "RED").RED, "RED"),
+            (Path("a/b"), "a/b"),
+            (np.array([1.0, 2.0]), [1.0, 2.0]),
+            (np.float64(1.5), 1.5),
+            ({"b", "a"}, ["a", "b"]),
+        ],
+    )
+    def test_serialize(self, module: ModuleType, obj: object, expected: object):
+        assert module._serialize(obj) == expected
+
+    def test_not_serializable(self, module: ModuleType):
+        with pytest.raises(TypeError, match="not serializable"):
+            module._serialize(object())
+
+
 class TestRunTask:
     def test_run_task(
         self, module: ModuleType, mock_experiment: MagicMock, tmp_path: Path
     ):
+        settings = {"rounds": 3}
         module._run_task(
             "age",
             tmp_path,
@@ -168,6 +205,7 @@ class TestRunTask:
             num_updates=10,
             learning_rate=0.1,
             test_ratio=0.2,
+            settings=settings,
         )
 
         assert mock_experiment.call_args.kwargs["tags"] == ["brainflex", "age"]
@@ -176,10 +214,18 @@ class TestRunTask:
         assert training_args["loader_args"] == {"batch_size": 8}
         exp = mock_experiment.return_value
         assert exp.run_once.call_count == 3
+        assert exp.save_training_replies.call_count == 3
         exp.training_plan.return_value.export_model.assert_called_once_with(
             str(tmp_path / "age" / "model.pkl")
         )
-        model_args = json.loads((tmp_path / "age" / "model_args.json").read_text())
+        assert (
+            exp.set_training_plan_class.call_args.args[0].__name__
+            == "TabularRegressorTrainingPlan"
+        )
+
+        json_data = json.loads((tmp_path / "age" / "results.json").read_text())
+        assert json_data["settings"]["runtime_args"] == settings
+        model_args = json_data["settings"]["model_args"]
         assert model_args["target_column"] == "nb:Age"
         assert model_args["feature_columns"] == [
             "Left-Hippocampus",
@@ -187,10 +233,33 @@ class TestRunTask:
             "nb:Sex",
         ]
         exp.set_model_args.assert_called_once_with(model_args)
-        assert (
-            exp.set_training_plan_class.call_args.args[0].__name__
-            == "TabularRegressorTrainingPlan"
+        training_args = json_data["settings"]["training_args"]
+        assert training_args["test_metric"] == "MEAN_SQUARE_ERROR"
+        # JSON object keys are strings
+        assert json_data["results"] == json.loads(
+            json.dumps(
+                {"node_metrics": NODE_METRICS, "training_replies": TRAINING_REPLIES}
+            )
         )
+
+    def test_settings_saved_if_training_fails(
+        self, module: ModuleType, mock_experiment: MagicMock, tmp_path: Path
+    ):
+        mock_experiment.return_value.run_once.side_effect = RuntimeError
+        with pytest.raises(RuntimeError):
+            module._run_task(
+                "sex",
+                tmp_path,
+                rounds=3,
+                batch_size=8,
+                num_updates=10,
+                learning_rate=0.1,
+                test_ratio=0.2,
+                settings={},
+            )
+        json_data = json.loads((tmp_path / "sex" / "results.json").read_text())
+        assert json_data["settings"]["model_args"]["n_classes"] == 2
+        assert "results" not in json_data
 
 
 class TestMain:
@@ -203,6 +272,30 @@ class TestMain:
             "age",
         ]
         assert mock_run_task.call_args.kwargs["rounds"] == 2
+        settings = mock_run_task.call_args.kwargs["settings"]
+        assert settings["output_dir"] == tmp_path
+        assert settings["tasks"] == ["sex", "age"]
+        assert settings["rounds"] == 2
+        assert settings["overwrite"] is False
+
+    def test_existing_results(
+        self, module: ModuleType, mock_run_task: MagicMock, tmp_path: Path
+    ):
+        fpath_results = tmp_path / "age" / "results.json"
+        fpath_results.parent.mkdir()
+        fpath_results.write_text("{}")
+        with pytest.raises(SystemExit, match="--overwrite"):
+            module.main([str(tmp_path), "--task", "sex", "--task", "age"])
+        mock_run_task.assert_not_called()
+
+    def test_overwrite(
+        self, module: ModuleType, mock_run_task: MagicMock, tmp_path: Path
+    ):
+        fpath_results = tmp_path / "age" / "results.json"
+        fpath_results.parent.mkdir()
+        fpath_results.write_text("{}")
+        module.main([str(tmp_path), "--task", "age", "--overwrite"])
+        mock_run_task.assert_called_once()
 
     @pytest.mark.parametrize("args", [[], ["--task", "height"]])
     def test_invalid_task(
