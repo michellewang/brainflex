@@ -101,6 +101,18 @@ class TestGetFeatureStats:
         assert std == [100.0, 0.5, 0.5]
         analytics.fetch_stats.assert_called_once_with(["mean", "std"])
 
+    def test_constant_columns_dropped(self, module: ModuleType, analytics: MagicMock):
+        stats = {
+            "mean": GLOBAL_STATS["mean"]
+            | {"Left-WM-hypointensities": 0.0, "Single-Value": 1.0},
+            "std": GLOBAL_STATS["std"]
+            | {"Left-WM-hypointensities": 0.0, "Single-Value": np.nan},
+        }
+        analytics.fetch_stats.return_value.global_stats.side_effect = stats.get
+        columns, mean, std = module._get_feature_stats(analytics, "nb:Age")
+        assert columns == ["Left-Hippocampus", "lh_insula", "nb:Sex"]
+        assert len(mean) == len(std) == 3
+
     def test_json_serializable(self, module: ModuleType, analytics: MagicMock):
         json.dumps(module._get_feature_stats(analytics, "nb:Sex"))
 
@@ -160,6 +172,8 @@ class TestRunTask:
 
         assert mock_experiment.call_args.kwargs["tags"] == ["brainflex", "age"]
         assert mock_experiment.call_args.kwargs["round_limit"] == 3
+        training_args = TrainingArgs(mock_experiment.call_args.kwargs["training_args"])
+        assert training_args["loader_args"] == {"batch_size": 8}
         exp = mock_experiment.return_value
         assert exp.run_once.call_count == 3
         exp.training_plan.return_value.export_model.assert_called_once_with(

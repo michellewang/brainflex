@@ -5,6 +5,7 @@
 import argparse
 import importlib.util
 import json
+import math
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -100,14 +101,24 @@ def _load_training_plan_class(module_name: str, class_name: str) -> type:
 def _get_feature_stats(
     analytics: FederatedAnalytics, target_column: str
 ) -> tuple[list[str], list[float], list[float]]:
-    """Get the feature columns and their global mean and std with federated analytics.
-
-    All columns except the target column are features.
-    """
+    """Get the feature columns and their global mean and std."""
     result = analytics.fetch_stats(["mean", "std"])
     mean = result.global_stats("mean")
     std = result.global_stats("std")
-    columns = sorted(column for column in mean if column != target_column)
+    excluded_columns: list[str] = []
+    columns: list[str] = []
+    for column in mean:
+        if not math.isfinite(std[column]) or std[column] == 0:
+            excluded_columns.append(column)
+            continue
+        if column != target_column:
+            columns.append(column)
+
+    columns = sorted(columns)
+
+    if excluded_columns:
+        print(f"Excluding {len(excluded_columns)} features: {excluded_columns}")
+
     # cast to float so that the model args are JSON-serializable
     return (
         columns,
@@ -149,7 +160,7 @@ def _run_task(
     exp = Experiment(
         tags=[COMMON_TAG, task],
         training_args={
-            "batch_size": batch_size,
+            "loader_args": {"batch_size": batch_size},
             "num_updates": num_updates,
             "test_ratio": test_ratio,
             "test_metric": config.test_metric,
