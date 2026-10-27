@@ -37,7 +37,7 @@ doc = [
 ]
 test = [
     "declearn>=2.6.1", # needs pin to avoid version conflict
-    "fedbiomed",
+    "fedbiomed[researcher]",
     "pytest-cov",
     "pytest-mock",
     "pytest>=6.0.0",
