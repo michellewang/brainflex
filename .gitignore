@@ -221,3 +221,5 @@ __marimo__/
 
 # hatch-vcs version file
 src/brainflex/_version.py
+
+fbm-researcher
