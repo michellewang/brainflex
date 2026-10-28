@@ -24,11 +24,14 @@ uv pip install -r requirements.txt
 
 ## Project initialization
 
-Initialize the project in the current directory:
+From inside the `brainflex-node` directory, initialize configuration files specific to your node.
 
 ```bash
-brainflex init
+brainflex init <CONFIG_ENV>
 ```
+
+<!-- TODO output -->
+<!-- TODO do not commit .env or config.env -->
 
 ## Prerequisites check
 

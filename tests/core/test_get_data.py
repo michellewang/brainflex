@@ -6,8 +6,8 @@ import pytest
 from pytest_mock import MockerFixture
 
 from brainflex.core.get_data import get_data
-from brainflex.core.init import init
 from brainflex.utils.constants import (
+    BRAINFLEX_DIRNAME,
     DATA_DIRNAME,
     DERIVATIVES_BUCKET,
     OPENNEURO_BUCKET,
@@ -88,7 +88,7 @@ def mock_s3(
 
 @pytest.fixture
 def root(tmp_path: Path) -> Path:
-    init(tmp_path)
+    (tmp_path / BRAINFLEX_DIRNAME).mkdir()
     return tmp_path
 
 

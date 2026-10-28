@@ -4,7 +4,6 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from brainflex.core.init import init
 from brainflex.core.record import Status, Step, record
 from brainflex.utils.constants import (
     BRAINFLEX_DIRNAME,
@@ -15,7 +14,7 @@ from brainflex.utils.constants import (
 
 @pytest.fixture
 def root(tmp_path: Path) -> Path:
-    init(tmp_path)
+    (tmp_path / BRAINFLEX_DIRNAME).mkdir()
     return tmp_path
 
 

@@ -16,7 +16,7 @@ from brainflex.core.check import (
     _check_project,
     check,
 )
-from brainflex.core.init import init
+from brainflex.utils.constants import BRAINFLEX_DIRNAME
 
 
 @pytest.fixture
@@ -26,7 +26,7 @@ def mock_run(mocker: MockerFixture) -> MagicMock:
 
 class TestCheckProject:
     def test_initialized(self, tmp_path: Path):
-        init(tmp_path)
+        (tmp_path / BRAINFLEX_DIRNAME).mkdir()
         result = _check_project(tmp_path)
         assert result.passed
         assert result.required

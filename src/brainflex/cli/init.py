@@ -5,23 +5,31 @@ from typing import Annotated
 
 import typer
 
+from brainflex.cli.options import RootOption
 from brainflex.core.init import init
+from brainflex.utils.constants import (
+    ENV_FILENAME,
+    VPN_CONFIG_DIRNAME,
+    VPN_CONFIG_FILENAME,
+)
 
 
 def init_cli(
-    path: Annotated[
+    vpn_config: Annotated[
         Path,
         typer.Argument(
-            file_okay=False,
+            dir_okay=False,
             resolve_path=True,
-            help="Project root directory (created if it does not exist).",
+            help="VPN configuration file received from the project coordinator.",
         ),
-    ] = Path(),
+    ],
+    path: RootOption = Path(),
 ) -> None:
-    """Initialize a project directory."""
+    """Create the Docker Compose configuration (.env and VPN configuration files)."""
     try:
-        init(path)
-    except FileExistsError as e:
+        init(path, vpn_config)
+    except (FileExistsError, FileNotFoundError) as e:
         typer.echo(e, err=True)
         raise typer.Exit(1) from e
-    typer.echo(f"Initialized project in {path}")
+    typer.echo(f"Created {path / ENV_FILENAME}")
+    typer.echo(f"Created {path / VPN_CONFIG_DIRNAME / VPN_CONFIG_FILENAME}")

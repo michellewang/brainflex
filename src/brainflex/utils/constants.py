@@ -5,6 +5,14 @@ DATA_DIRNAME = "data"
 BRAINFLEX_DIRNAME = ".brainflex"
 STATUS_LOG_FILENAME = "status_log.tsv"
 
+# init
+ENV_FILENAME = ".env"
+ENV_EXAMPLE_FILENAME = ".env.example"
+ENV_VAR_UID = "CONTAINER_UID"
+ENV_VAR_GID = "CONTAINER_GID"
+VPN_CONFIG_DIRNAME = "vpn_config"
+VPN_CONFIG_FILENAME = "config.env"
+
 # record
 BACKUP_TIMESTAMP_FORMAT = "%Y%m%dT%H%M%S"
 COL_TIMESTAMP = "timestamp"
