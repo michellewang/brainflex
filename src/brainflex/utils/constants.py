@@ -1,9 +1,12 @@
 """Constants."""
 
+from pathlib import Path
+
 # project
 DATA_DIRNAME = "data"
 BRAINFLEX_DIRNAME = ".brainflex"
-STATUS_LOG_FILENAME = "status_log.tsv"
+PACKAGE_ROOT_DIR = Path(__file__).parent.parent
+PACKAGE_DATA_DIR = PACKAGE_ROOT_DIR / "data"
 
 # init
 ENV_FILENAME = ".env"
@@ -14,6 +17,7 @@ VPN_CONFIG_DIRNAME = "vpn_config"
 VPN_CONFIG_FILENAME = "config.env"
 
 # record
+STATUS_LOG_FILENAME = "status_log.tsv"
 BACKUP_TIMESTAMP_FORMAT = "%Y%m%dT%H%M%S"
 COL_TIMESTAMP = "timestamp"
 COL_STEP = "step"

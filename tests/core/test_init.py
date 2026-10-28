@@ -8,27 +8,25 @@ from brainflex.utils.constants import (
     BRAINFLEX_DIRNAME,
     ENV_EXAMPLE_FILENAME,
     ENV_FILENAME,
+    PACKAGE_DATA_DIR,
     VPN_CONFIG_DIRNAME,
     VPN_CONFIG_FILENAME,
 )
 
-ENV_EXAMPLE = """\
-# Fed-BioMed version
-FBM_CONTAINER_VERSION_TAG=6.4.1
-
-# Host user and group
-#CONTAINER_UID=
-#CONTAINER_GID=
-"""
 VPN_CONFIG = "export VPN_IP=10.221.0.2\n"
 
 
 @pytest.fixture
 def root(tmp_path: Path) -> Path:
-    """Project root with a brainflex directory and a .env.example file."""
+    """Project root with a brainflex directory."""
     (tmp_path / BRAINFLEX_DIRNAME).mkdir()
-    (tmp_path / ENV_EXAMPLE_FILENAME).write_text(ENV_EXAMPLE)
     return tmp_path
+
+
+@pytest.fixture
+def env_example() -> str:
+    """Example .env file shipped with brainflex."""
+    return (PACKAGE_DATA_DIR / ENV_EXAMPLE_FILENAME).read_text()
 
 
 @pytest.fixture
@@ -64,14 +62,14 @@ class TestSetVariable:
 
 
 class TestInit:
-    def test_init(self, root: Path, fpath_vpn_config: Path):
+    def test_init(self, root: Path, fpath_vpn_config: Path, env_example: str):
         init(root, fpath_vpn_config)
         content = (root / ENV_FILENAME).read_text()
-        assert "FBM_CONTAINER_VERSION_TAG=6.4.1\n" in content
-        assert f"\nCONTAINER_UID={os.getuid()}\n" in content
-        assert f"\nCONTAINER_GID={os.getgid()}\n" in content
-        assert "#CONTAINER_" not in content
-        assert (root / ENV_EXAMPLE_FILENAME).read_text() == ENV_EXAMPLE
+        # the user and group variables are uncommented, not appended
+        assert content == env_example.replace(
+            "#CONTAINER_UID=", f"CONTAINER_UID={os.getuid()}"
+        ).replace("#CONTAINER_GID=", f"CONTAINER_GID={os.getgid()}")
+        assert content != env_example
 
         fpath_dst = _fpath_vpn_config_dst(root)
         assert fpath_dst.read_text() == VPN_CONFIG
@@ -90,13 +88,6 @@ class TestInit:
     def test_init_not_project(self, root: Path, fpath_vpn_config: Path):
         (root / BRAINFLEX_DIRNAME).rmdir()
         with pytest.raises(FileNotFoundError, match="Not a brainflex project"):
-            init(root, fpath_vpn_config)
-        assert not (root / ENV_FILENAME).exists()
-        assert not _fpath_vpn_config_dst(root).exists()
-
-    def test_init_no_env_example(self, root: Path, fpath_vpn_config: Path):
-        (root / ENV_EXAMPLE_FILENAME).unlink()
-        with pytest.raises(FileNotFoundError, match=ENV_EXAMPLE_FILENAME):
             init(root, fpath_vpn_config)
         assert not (root / ENV_FILENAME).exists()
         assert not _fpath_vpn_config_dst(root).exists()

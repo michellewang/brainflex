@@ -11,6 +11,7 @@ from brainflex.utils.constants import (
     ENV_FILENAME,
     ENV_VAR_GID,
     ENV_VAR_UID,
+    PACKAGE_DATA_DIR,
     VPN_CONFIG_DIRNAME,
     VPN_CONFIG_FILENAME,
 )
@@ -41,10 +42,6 @@ def init(root: Path, fpath_vpn_config: Path) -> None:
     if not dpath_brainflex.is_dir():
         raise FileNotFoundError(f"Not a brainflex project: {dpath_brainflex} not found")
 
-    fpath_example = root / ENV_EXAMPLE_FILENAME
-    if not fpath_example.is_file():
-        raise FileNotFoundError(f"{fpath_example} not found")
-
     if not fpath_vpn_config.is_file():
         raise FileNotFoundError(f"VPN configuration file {fpath_vpn_config} not found")
 
@@ -63,7 +60,8 @@ def init(root: Path, fpath_vpn_config: Path) -> None:
             f"Project already initialized: {fpath_vpn_config_dst} exists"
         )
 
-    content = fpath_example.read_text()
+    content = (PACKAGE_DATA_DIR / ENV_EXAMPLE_FILENAME).read_text()
+
     content = _set_variable(content, ENV_VAR_UID, str(os.getuid()))
     content = _set_variable(content, ENV_VAR_GID, str(os.getgid()))
     fpath_env.write_text(content)
