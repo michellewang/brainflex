@@ -26,6 +26,6 @@ Combine the FreeSurfer IDPs and harmonized phenotypic data into a Fed-BioMed dat
 nipoppy process --pipeline nipoppy2fedbiomed
 ```
 
-For each of the prediction tasks (brain age regression and biological sex classification), this will write a CSV file (the Fed-BioMed dataset) and a JSON file.
+For each of the prediction tasks (brain age regression and biological sex classification), this will write a CSV file (the Fed-BioMed dataset) and a JSON file used to register it on the [Fed-BioMed node](fedbiomed_node.md).
 
 <!-- TODO tree -->

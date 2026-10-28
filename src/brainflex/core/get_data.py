@@ -26,13 +26,13 @@ from brainflex.utils.constants import (
     BRAINFLEX_DIRNAME,
     COL_PARTICIPANT_ID,
     COL_SESSION_ID,
-    DATA_DIRNAME,
     DERIVATIVES_BUCKET,
     DERIVATIVES_REGION,
     FREESURFER_BUILD_STAMP,
     FREESURFER_PIPELINE_NAME,
     FREESURFER_PREFIX,
     FREESURFER_SUBDIRS,
+    NIPOPPY_STUDY_DIRNAME,
     OPENNEURO_BUCKET,
     OPENNEURO_REGION,
     PARTICIPANTS_FILENAME,
@@ -245,10 +245,10 @@ def get_data(
     Raises FileExistsError if the study already exists and ``overwrite`` is False.
     Returns the path to the Nipoppy study.
     """
-    dpath_study = root / DATA_DIRNAME / dataset_id
+    dpath_study = root / NIPOPPY_STUDY_DIRNAME
     if dpath_study.exists():
         if not overwrite:
-            raise FileExistsError(f"Dataset already exists: {dpath_study}")
+            raise FileExistsError(f"Nipoppy study already exists: {dpath_study}")
         shutil.rmtree(dpath_study)
 
     dpath_brainflex = root / BRAINFLEX_DIRNAME

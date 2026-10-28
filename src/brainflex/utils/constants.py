@@ -3,7 +3,7 @@
 from pathlib import Path
 
 # project
-DATA_DIRNAME = "data"
+NIPOPPY_STUDY_DIRNAME = "nipoppy_study"
 BRAINFLEX_DIRNAME = ".brainflex"
 PACKAGE_ROOT_DIR = Path(__file__).parent.parent
 PACKAGE_DATA_DIR = PACKAGE_ROOT_DIR / "data"
@@ -13,6 +13,7 @@ ENV_FILENAME = ".env"
 ENV_EXAMPLE_FILENAME = ".env.example"
 ENV_VAR_UID = "CONTAINER_UID"
 ENV_VAR_GID = "CONTAINER_GID"
+ENV_VAR_NIPOPPY_ROOT = "NIPOPPY_ROOT"
 VPN_CONFIG_DIRNAME = "vpn_config"
 VPN_CONFIG_FILENAME = "config.env"
 

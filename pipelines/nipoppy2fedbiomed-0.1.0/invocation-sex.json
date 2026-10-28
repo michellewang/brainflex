@@ -10,5 +10,7 @@
     "tag": [
         "brainflex",
         "sex"
-    ]
+    ],
+    "name": "sex",
+    "dataset_path": "$NIPOPPY_ROOT/derivatives/nipoppy2fedbiomed/0.1.0/output/sex/dataset.csv"
 }

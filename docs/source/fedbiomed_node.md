@@ -11,16 +11,17 @@ The node runs with Docker Compose as two containers:
 
 - Docker with the Compose plugin (`docker compose`)
 - Outbound UDP access to the VPN server
+- The Nipoppy study downloaded with `brainflex get-data` (see [Initial setup](initial_setup.md)), which the node mounts
 
 ## Setup
+
+<!-- TODO config that config.env is where it is expected -->
 
 1. Build and start the containers:
 
    ```bash
    docker compose up -d --build
    ```
-
-   The first build compiles the WireGuard userspace implementation and takes a few minutes.
 
 2. Send the node's WireGuard public key to the VPN administrator, who registers it on the VPN server:
 
@@ -41,13 +42,20 @@ The node runs with Docker Compose as two containers:
 
 Fed-BioMed node files (configuration, database, data) are in `fbm-node`, mounted at `/fbm-node` in the `node` container.
 
-Register a dataset:
+Register the datasets [created by `nipoppy2fedbiomed`](fedbiomed_dataset.md):
 
 ```bash
-docker compose exec -u fedbiomed node fedbiomed node -p /fbm-node dataset add
+for task in age sex
+do
+    docker compose exec -u fedbiomed node fedbiomed node -p /fbm-node dataset add --file /nipoppy_study/derivatives/nipoppy2fedbiomed/0.1.0/output/${task}/dataset_info.json
+done
 ```
 
-<!-- TODO make the Fed-BioMed dataset (CSV) from <NIPOPPY_ROOT> available in /fbm-node -->
+Check that they are listed:
+
+```bash
+docker compose exec -u fedbiomed node fedbiomed node -p /fbm-node dataset list
+```
 
 Stop the containers:
 

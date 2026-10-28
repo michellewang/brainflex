@@ -10,7 +10,9 @@ from brainflex.utils.constants import (
     ENV_EXAMPLE_FILENAME,
     ENV_FILENAME,
     ENV_VAR_GID,
+    ENV_VAR_NIPOPPY_ROOT,
     ENV_VAR_UID,
+    NIPOPPY_STUDY_DIRNAME,
     PACKAGE_DATA_DIR,
     VPN_CONFIG_DIRNAME,
     VPN_CONFIG_FILENAME,
@@ -64,6 +66,7 @@ def init(root: Path, fpath_vpn_config: Path) -> None:
 
     content = _set_variable(content, ENV_VAR_UID, str(os.getuid()))
     content = _set_variable(content, ENV_VAR_GID, str(os.getgid()))
+    content = _set_variable(content, ENV_VAR_NIPOPPY_ROOT, f"./{NIPOPPY_STUDY_DIRNAME}")
     fpath_env.write_text(content)
 
     if copy_vpn_config:

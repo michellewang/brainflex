@@ -65,10 +65,12 @@ class TestInit:
     def test_init(self, root: Path, fpath_vpn_config: Path, env_example: str):
         init(root, fpath_vpn_config)
         content = (root / ENV_FILENAME).read_text()
-        # the user and group variables are uncommented, not appended
+        # the variables are uncommented, not appended
         assert content == env_example.replace(
             "#CONTAINER_UID=", f"CONTAINER_UID={os.getuid()}"
-        ).replace("#CONTAINER_GID=", f"CONTAINER_GID={os.getgid()}")
+        ).replace("#CONTAINER_GID=", f"CONTAINER_GID={os.getgid()}").replace(
+            "#NIPOPPY_ROOT=", "NIPOPPY_ROOT=./nipoppy_study"
+        )
         assert content != env_example
 
         fpath_dst = _fpath_vpn_config_dst(root)

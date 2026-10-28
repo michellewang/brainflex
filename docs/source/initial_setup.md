@@ -52,4 +52,4 @@ Download the OpenNeuro dataset assigned to your site, replacing `<DATASET_ID>` w
 brainflex get-data <DATASET_ID>
 ```
 
-This creates a Nipoppy study in `data/<DATASET_ID>`. In the rest of the instructions, this directory is referred to as `<NIPOPPY_ROOT>`.
+This creates a Nipoppy study in `nipoppy_study`. In the rest of the instructions, this directory is referred to as `<NIPOPPY_ROOT>`.
