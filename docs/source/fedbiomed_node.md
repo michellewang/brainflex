@@ -1,0 +1,64 @@
+# Fed-BioMed node
+
+All commands on this page assume the working directory is the `brainflex-node` directory (see [Initial setup](initial_setup.md)).
+
+The node runs with Docker Compose as two containers:
+
+- `vpn`: a WireGuard client that connects to the brainflex VPN server
+- `node`: the published [`fedbiomed/node`](https://hub.docker.com/r/fedbiomed/node) image, using the network of the `vpn` container to reach the researcher
+
+## Requirements
+
+- Docker with the Compose plugin (`docker compose`)
+- Outbound UDP access to the VPN server
+
+## Setup
+
+1. Create the `.env` file and set `CONTAINER_UID`/`CONTAINER_GID` to the output of `id -u`/`id -g`:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Get your `config.env` file from the brainflex VPN administrator and place it in `vpn_config/`. Keep this file private.
+
+3. Build and start the containers:
+
+   ```bash
+   docker compose up -d --build
+   ```
+
+   The first build compiles the WireGuard userspace implementation and takes a few minutes.
+
+4. Send the node's WireGuard public key to the VPN administrator, who registers it on the VPN server:
+
+   ```bash
+   docker compose logs vpn | grep 'public key'
+   ```
+
+   The key is kept in `vpn_config/wireguard/wg0.conf` and reused when the containers are restarted.
+
+5. Once the key is registered, check that the VPN server and the researcher are reachable, and that the node is running:
+
+   ```bash
+   scripts/vpn_status
+   docker compose exec -u fedbiomed node fedbiomed node -p /fbm-node status
+   ```
+
+## Usage
+
+Fed-BioMed node files (configuration, database, data) are in `fbm-node`, mounted at `/fbm-node` in the `node` container.
+
+Register a dataset:
+
+```bash
+docker compose exec -u fedbiomed node fedbiomed node -p /fbm-node dataset add
+```
+
+<!-- TODO make the Fed-BioMed dataset (CSV) from <NIPOPPY_ROOT> available in /fbm-node -->
+
+Stop the containers:
+
+```bash
+docker compose down
+```
