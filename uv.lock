@@ -301,7 +301,7 @@ dev = [
     { name = "declearn", specifier = ">=2.6.1" },
     { name = "fedbiomed", extras = ["researcher"] },
     { name = "furo" },
-    { name = "myst-parser", specifier = ">=5.1.0" },
+    { name = "myst-parser" },
     { name = "prek" },
     { name = "pytest", specifier = ">=6.0.0" },
     { name = "pytest-cov" },
@@ -312,7 +312,7 @@ dev = [
 ]
 doc = [
     { name = "furo" },
-    { name = "myst-parser", specifier = ">=5.1.0" },
+    { name = "myst-parser" },
     { name = "sphinx" },
     { name = "sphinx-copybutton" },
 ]
