@@ -178,7 +178,7 @@ test = [
 
 [package.metadata]
 requires-dist = [
-    { name = "nipoppy", specifier = "==0.4.7" },
+    { name = "nipoppy", specifier = "==0.4.8" },
     { name = "obstore", specifier = ">=0.9,<0.10" },
     { name = "pandas" },
     { name = "rich" },
@@ -814,7 +814,7 @@ wheels = [
 
 [[package]]
 name = "nipoppy"
-version = "0.4.7"
+version = "0.4.8"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "boutiques" },
@@ -832,9 +832,9 @@ dependencies = [
     { name = "rich-click" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/91/ee/344cc024494237929737dba3860df0107e953095d589a0dae7aedca7f6d6/nipoppy-0.4.7.tar.gz", hash = "sha256:428f9647e76002a505f320b730fb1ff0b27ddc4a470ca5e9c6e61061d86a213b", size = 4356299, upload-time = "2026-08-12T15:01:35.323Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/cd/c4/fd6a5e098ec631a18eebe8fe6e5bcd5d2a4316ff67172d3e44b989553c90/nipoppy-0.4.8.tar.gz", hash = "sha256:2d46218d2d9b5ccd48b192b868ad97279afe591adacbc3b970261dae0301ca54", size = 4578004, upload-time = "2026-10-26T21:42:48.724Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ab/7a/957f39b6735d147a06d411c2d7f08c9a84c0b66ee4c94d2692d268b6a825/nipoppy-0.4.7-py3-none-any.whl", hash = "sha256:42c4602281f6489b958c99f745fdb82436383746bd0818d333051ac28f358f71", size = 139343, upload-time = "2026-08-12T15:01:33.761Z" },
+    { url = "https://files.pythonhosted.org/packages/3c/93/a6dd4d62418c4b3b039e8823a59740b14293659b87c776da52af26477aaf/nipoppy-0.4.8-py3-none-any.whl", hash = "sha256:44822950f7b10fbc6518a16ede1057c094533f289b18d75be66f362cc73d7cfa", size = 142693, upload-time = "2026-10-26T21:42:46.606Z" },
 ]
 
 [[package]]
