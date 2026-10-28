@@ -55,6 +55,9 @@ version-file = "src/brainflex/_version.py"
 
 [tool.hatch.version]
 source = "vcs"
+# the CLI uses release tag pattern cli/vX.Y.Z
+tag-pattern = '^cli/(?P<version>[vV]?\d+(?:\.\d+){0,2}[^\+]*)(?:\+.*)?$'
+raw-options = { git_describe_command = "git describe --dirty --tags --long --match 'cli/v*'" }
 
 [tool.codespell]
 skip = '.git,.github,pyproject.toml,uv.lock'
