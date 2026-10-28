@@ -14,7 +14,9 @@ from enum import Enum
 from pathlib import Path
 
 import numpy as np
+from declearn.optimizer.modules import ScaffoldServerModule
 from fedbiomed.common.metrics import MetricTypes
+from fedbiomed.common.optimizers.optimizer import Optimizer
 from fedbiomed.common.training_plans import BaseTrainingPlan
 from fedbiomed.researcher.federated_workflows import Experiment, FederatedAnalytics
 
@@ -24,11 +26,16 @@ PREFIX_RESULTS = "results"
 PREFIX_TENSORBOARD = "tensorboard"
 COMMON_TAG = "brainflex"
 
-DEFAULT_N_ROUNDS = 10
-DEFAULT_BATCH_SIZE = 32
+AGGREGATORS = ["fedavg", "fedprox", "scaffold"]
+
+DEFAULT_N_ROUNDS = 30
+DEFAULT_BATCH_SIZE = 1000  # full batch
 DEFAULT_N_UPDATES = 50
-DEFAULT_LEARNING_RATE = 0.001
+DEFAULT_LEARNING_RATE = 0.01
 DEFAULT_TEST_RATIO = 0.1
+DEFAULT_AGGREGATOR = "scaffold"
+DEFAULT_FEDPROX_MU = 1.0
+DEFAULT_ALPHA = 0.1
 
 
 @dataclass(frozen=True)
@@ -37,6 +44,8 @@ class TaskConfig:
     training_plan_class: str
     target_column: str
     test_metric: MetricTypes
+    # whether the model intercept is initialized to the global target mean
+    with_target_mean: bool = False
     extra_model_args: dict = field(default_factory=dict)
 
 
@@ -46,6 +55,7 @@ TASKS = {
         training_plan_class="TabularRegressorTrainingPlan",
         target_column="nb:Age",
         test_metric=MetricTypes.MEAN_SQUARE_ERROR,
+        with_target_mean=True,
     ),
     "sex": TaskConfig(
         training_plan_module="tabular_classifier",
@@ -101,6 +111,24 @@ def _get_parser() -> argparse.ArgumentParser:
         help=f"Fraction of node data for validation. Default: {DEFAULT_TEST_RATIO}.",
     )
     parser.add_argument(
+        "--aggregator",
+        choices=AGGREGATORS,
+        default=DEFAULT_AGGREGATOR,
+        help=f"Aggregation strategy. Default: {DEFAULT_AGGREGATOR}.",
+    )
+    parser.add_argument(
+        "--fedprox-mu",
+        type=float,
+        default=DEFAULT_FEDPROX_MU,
+        help=f"FedProx proximal term (fedprox only). Default: {DEFAULT_FEDPROX_MU}.",
+    )
+    parser.add_argument(
+        "--alpha",
+        type=float,
+        default=DEFAULT_ALPHA,
+        help=f"L2 regularization strength. Default: {DEFAULT_ALPHA}.",
+    )
+    parser.add_argument(
         "--overwrite",
         action="store_true",
         help="Overwrite existing results.",
@@ -123,16 +151,20 @@ def _get_fpath_out(
     n_updates: int,
     learning_rate: float,
     test_ratio: float,
+    aggregator: str,
+    alpha: float,
     extension: str = ".json",
 ) -> Path:
     stem = "-".join(
         [
             prefix,
+            aggregator,
             f"{n_rounds}rounds",
             f"{n_updates}updates",
             f"{batch_size}",
             f"{learning_rate}lr",
             f"{test_ratio}test",
+            f"{alpha}alpha",
         ]
     )
     return output_dir / task / f"{stem}{extension}"
@@ -207,8 +239,8 @@ def _load_training_plan_class(module_name: str, class_name: str) -> type:
 
 def _get_feature_stats(
     analytics: FederatedAnalytics, target_column: str
-) -> tuple[list[str], list[float], list[float], dict[str, list[str]]]:
-    """Get the feature columns and their global mean and std."""
+) -> tuple[list[str], list[float], list[float], dict[str, list[str]], float]:
+    """Get the feature/excluded columns, some stats, and the target variable's mean."""
     result = analytics.fetch_stats(["mean", "std"])
     mean = result.global_stats("mean")
     std = result.global_stats("std")
@@ -236,6 +268,7 @@ def _get_feature_stats(
         [float(mean[column]) for column in columns],
         [float(std[column]) for column in columns],
         excluded_columns,
+        float(mean[target_column]),
     )
 
 
@@ -244,18 +277,38 @@ def _build_model_args(
     columns: list[str],
     mean: list[float],
     std: list[float],
-    learning_rate: float,
+    alpha: float,
+    target_mean: float,
 ) -> dict:
     config = TASKS[task]
-    return {
+    model_args = {
         "n_features": len(columns),
         "feature_columns": columns,
         "feature_mean": mean,
         "feature_std": std,
         "target_column": config.target_column,
-        "eta0": learning_rate,
+        "alpha": alpha,
         **config.extra_model_args,
     }
+    if config.with_target_mean:
+        model_args["target_mean"] = target_mean
+    return model_args
+
+
+def _build_optimizer_args(
+    learning_rate: float, aggregator: str, fedprox_mu: float
+) -> dict:
+    return {
+        "lr": learning_rate,
+        "scaffold": aggregator == "scaffold",
+        "fedprox_mu": fedprox_mu if aggregator == "fedprox" else None,
+    }
+
+
+def _get_agg_optimizer(aggregator: str) -> Optimizer | None:
+    if aggregator == "scaffold":
+        return Optimizer(lr=1.0, modules=[ScaffoldServerModule()])
+    return None
 
 
 def _move_tensorboard_logs(exp: Experiment, dpath_tensorboard: Path) -> None:
@@ -277,6 +330,9 @@ def _run_task(
     n_updates: int,
     learning_rate: float,
     test_ratio: float,
+    aggregator: str,
+    fedprox_mu: float,
+    alpha: float,
     settings: dict,
     fpath_results: Path,
     fpath_model: Path,
@@ -293,18 +349,22 @@ def _run_task(
             "test_metric": config.test_metric,
             "test_on_global_updates": True,
             "test_on_local_updates": True,
+            "optimizer_args": _build_optimizer_args(
+                learning_rate, aggregator, fedprox_mu
+            ),
             # NOTE: if Leave-one-node-out CV, set shuffle_testing_dataset=True
         },
+        agg_optimizer=_get_agg_optimizer(aggregator),
         round_limit=n_rounds,
         tensorboard=dpath_tensorboard is not None,
     )
 
     # the training plan needs the feature stats to be instantiated
-    columns, mean, std, excluded_columns = _get_feature_stats(
+    columns, mean, std, excluded_columns, target_mean = _get_feature_stats(
         exp.analytics, config.target_column
     )
     print(f"[{task}] Using {len(columns)} features")
-    model_args = _build_model_args(task, columns, mean, std, learning_rate)
+    model_args = _build_model_args(task, columns, mean, std, alpha, target_mean)
     exp.set_model_args(model_args)
     exp.set_training_plan_class(
         _load_training_plan_class(
@@ -353,6 +413,9 @@ def run_experiments(
     n_updates: int = DEFAULT_N_UPDATES,
     learning_rate: float = DEFAULT_LEARNING_RATE,
     test_ratio: float = DEFAULT_TEST_RATIO,
+    aggregator: str = DEFAULT_AGGREGATOR,
+    fedprox_mu: float = DEFAULT_FEDPROX_MU,
+    alpha: float = DEFAULT_ALPHA,
     overwrite: bool = False,
     tensorboard: bool = True,
 ) -> None:
@@ -374,6 +437,8 @@ def run_experiments(
                 n_updates=n_updates,
                 learning_rate=learning_rate,
                 test_ratio=test_ratio,
+                aggregator=aggregator,
+                alpha=alpha,
                 extension=".json",
             )
         )
@@ -387,6 +452,8 @@ def run_experiments(
                 n_updates=n_updates,
                 learning_rate=learning_rate,
                 test_ratio=test_ratio,
+                aggregator=aggregator,
+                alpha=alpha,
                 extension=".pkl",
             )
         )
@@ -400,6 +467,8 @@ def run_experiments(
                 n_updates=n_updates,
                 learning_rate=learning_rate,
                 test_ratio=test_ratio,
+                aggregator=aggregator,
+                alpha=alpha,
                 extension="",
             )
             if tensorboard
@@ -428,6 +497,9 @@ def run_experiments(
             n_updates=n_updates,
             learning_rate=learning_rate,
             test_ratio=test_ratio,
+            aggregator=aggregator,
+            fedprox_mu=fedprox_mu,
+            alpha=alpha,
             settings=settings,
             fpath_results=fpath_results,
             fpath_model=fpath_model,
@@ -446,6 +518,9 @@ def main(argv: list[str] | None = None) -> None:
             n_updates=args.n_updates,
             learning_rate=args.learning_rate,
             test_ratio=args.test_ratio,
+            aggregator=args.aggregator,
+            fedprox_mu=args.fedprox_mu,
+            alpha=args.alpha,
             overwrite=args.overwrite,
             tensorboard=args.tensorboard,
         )

@@ -135,14 +135,18 @@ class TestGetFpathOut:
             n_updates=50,
             learning_rate=0.001,
             test_ratio=0.2,
+            aggregator="scaffold",
+            alpha=0.1,
         )
         assert fpath == (
-            tmp_path / "age" / "results-10rounds-50updates-32-0.001lr-0.2test.json"
+            tmp_path
+            / "age"
+            / "results-scaffold-10rounds-50updates-32-0.001lr-0.2test-0.1alpha.json"
         )
 
     def test_extension(self, module: ModuleType, tmp_path: Path):
         fpath = module._get_fpath_out(
-            tmp_path, "sex", "model", 1, 1, 1, 0.1, 0.1, extension=".pkl"
+            tmp_path, "sex", "model", 1, 1, 1, 0.1, 0.1, "fedavg", 0.1, extension=".pkl"
         )
         assert fpath.parent == tmp_path / "sex"
         assert fpath.suffix == ".pkl"
@@ -179,10 +183,11 @@ class TestFilterFeatureCol:
 
 class TestGetFeatureStats:
     def test_target_dropped(self, module: ModuleType, analytics: MagicMock):
-        columns, mean, std, excluded_columns = module._get_feature_stats(
+        columns, mean, std, excluded_columns, target_mean = module._get_feature_stats(
             analytics, "nb:Age"
         )
         assert columns == ["Left-Hippocampus", "Left-Thalamus", "nb:Sex"]
+        assert target_mean == 30.0
         assert mean == [4000.0, 7000.0, 0.5]
         assert std == [100.0, 50.0, 0.5]
         assert not excluded_columns
@@ -204,7 +209,7 @@ class TestGetFeatureStats:
             },
         }
         analytics.fetch_stats.return_value.global_stats.side_effect = stats.get
-        columns, mean, std, excluded_columns = module._get_feature_stats(
+        columns, mean, std, excluded_columns, _ = module._get_feature_stats(
             analytics, "nb:Age"
         )
         assert columns == ["Left-Hippocampus", "Left-Thalamus", "nb:Sex"]
@@ -239,8 +244,12 @@ class TestBuildModelArgs:
         expected_x: list[list[float]],
     ):
         config = module.TASKS[task]
-        columns, mean, std, _ = module._get_feature_stats(analytics, target_column)
-        model_args = module._build_model_args(task, columns, mean, std, 0.1)
+        columns, mean, std, _, target_mean = module._get_feature_stats(
+            analytics, target_column
+        )
+        model_args = module._build_model_args(
+            task, columns, mean, std, 0.1, target_mean
+        )
 
         plan = module._load_training_plan_class(
             config.training_plan_module, config.training_plan_class
@@ -255,9 +264,40 @@ class TestBuildModelArgs:
         )
 
     def test_extra_model_args(self, module: ModuleType):
-        model_args = module._build_model_args("sex", ["a"], [0.0], [1.0], 0.1)
+        model_args = module._build_model_args("sex", ["a"], [0.0], [1.0], 0.1, 0.5)
         assert model_args["n_classes"] == 2
-        assert model_args["eta0"] == 0.1
+        assert model_args["alpha"] == 0.1
+        assert "eta0" not in model_args
+        assert "target_mean" not in model_args
+
+    def test_target_mean(self, module: ModuleType):
+        model_args = module._build_model_args("age", ["a"], [0.0], [1.0], 0.1, 30.0)
+        assert model_args["target_mean"] == 30.0
+
+
+class TestBuildOptimizerArgs:
+    @pytest.mark.parametrize(
+        "aggregator,expected",
+        [
+            ("fedavg", {"lr": 0.01, "scaffold": False, "fedprox_mu": None}),
+            ("fedprox", {"lr": 0.01, "scaffold": False, "fedprox_mu": 2.0}),
+            ("scaffold", {"lr": 0.01, "scaffold": True, "fedprox_mu": None}),
+        ],
+    )
+    def test_build_optimizer_args(
+        self, module: ModuleType, aggregator: str, expected: dict
+    ):
+        assert module._build_optimizer_args(0.01, aggregator, 2.0) == expected
+
+
+class TestGetAggOptimizer:
+    def test_scaffold(self, module: ModuleType):
+        optimizer = module._get_agg_optimizer("scaffold")
+        assert optimizer.get_state()["config"]["modules"] == [("scaffold-server", {})]
+
+    @pytest.mark.parametrize("aggregator", ["fedavg", "fedprox"])
+    def test_other(self, module: ModuleType, aggregator: str):
+        assert module._get_agg_optimizer(aggregator) is None
 
 
 class TestSerialize:
@@ -321,6 +361,9 @@ class TestRunTask:
             n_updates=10,
             learning_rate=0.1,
             test_ratio=0.2,
+            aggregator="scaffold",
+            fedprox_mu=1.0,
+            alpha=0.1,
             settings=settings,
             fpath_results=fpath_results,
             fpath_model=fpath_model,
@@ -332,6 +375,12 @@ class TestRunTask:
         training_args = TrainingArgs(mock_experiment.call_args.kwargs["training_args"])
         assert training_args["loader_args"] == {"batch_size": 8}
         assert training_args["num_updates"] == 10
+        assert training_args["optimizer_args"] == {
+            "lr": 0.1,
+            "scaffold": True,
+            "fedprox_mu": None,
+        }
+        assert mock_experiment.call_args.kwargs["agg_optimizer"] is not None
         exp = mock_experiment.return_value
         assert exp.run_once.call_count == 3
         assert exp.save_training_replies.call_count == 3
@@ -348,7 +397,8 @@ class TestRunTask:
         assert json_data["settings"]["excluded_columns"] == {}
         model_args = json_data["settings"]["model_args"]
         assert model_args["target_column"] == "nb:Age"
-        assert model_args["eta0"] == 0.1
+        assert model_args["alpha"] == 0.1
+        assert model_args["target_mean"] == 30.0
         assert model_args["feature_columns"] == [
             "Left-Hippocampus",
             "Left-Thalamus",
@@ -377,12 +427,16 @@ class TestRunTask:
                 n_updates=10,
                 learning_rate=0.1,
                 test_ratio=0.2,
+                aggregator="fedavg",
+                fedprox_mu=1.0,
+                alpha=0.1,
                 settings={},
                 fpath_results=fpath_results,
                 fpath_model=tmp_path / "sex" / "model.pkl",
             )
         json_data = json.loads(fpath_results.read_text())
         assert json_data["settings"]["model_args"]["n_classes"] == 2
+        assert mock_experiment.call_args.kwargs["agg_optimizer"] is None
         assert "results" not in json_data
 
     def test_tensorboard(
@@ -396,6 +450,9 @@ class TestRunTask:
             n_updates=10,
             learning_rate=0.1,
             test_ratio=0.2,
+            aggregator="scaffold",
+            fedprox_mu=1.0,
+            alpha=0.1,
             settings={},
             fpath_results=tmp_path / "age" / "results.json",
             fpath_model=tmp_path / "age" / "model.pkl",
@@ -416,6 +473,8 @@ def _write_results(module: ModuleType, dpath: Path, task: str, data: dict) -> No
         n_updates=module.DEFAULT_N_UPDATES,
         learning_rate=module.DEFAULT_LEARNING_RATE,
         test_ratio=module.DEFAULT_TEST_RATIO,
+        aggregator=module.DEFAULT_AGGREGATOR,
+        alpha=module.DEFAULT_ALPHA,
     )
     fpath.parent.mkdir(parents=True)
     fpath.write_text(json.dumps(data))
@@ -435,11 +494,13 @@ class TestMain:
         kwargs = mock_run_task.call_args.kwargs
         assert kwargs["n_rounds"] == 2
         assert kwargs["fpath_results"].parent == tmp_path.resolve() / "age"
-        assert kwargs["fpath_results"].name.startswith("results-2rounds-")
-        assert kwargs["fpath_model"].name.startswith("model-2rounds-")
+        assert kwargs["fpath_results"].name.startswith("results-scaffold-2rounds-")
+        assert kwargs["fpath_model"].name.startswith("model-scaffold-2rounds-")
         assert kwargs["fpath_model"].suffix == ".pkl"
         assert kwargs["dpath_tensorboard"].parent == tmp_path.resolve() / "age"
-        assert kwargs["dpath_tensorboard"].name.startswith("tensorboard-2rounds-")
+        assert kwargs["dpath_tensorboard"].name.startswith(
+            "tensorboard-scaffold-2rounds-"
+        )
         settings = kwargs["settings"]
         assert settings["output_dir"] == tmp_path.resolve()
         assert settings["tasks"] == ["sex", "age"]
@@ -447,6 +508,29 @@ class TestMain:
         assert settings["learning_rate"] == module.DEFAULT_LEARNING_RATE
         assert settings["overwrite"] is False
         assert settings["tensorboard"] is True
+
+    def test_aggregator_options(
+        self, module: ModuleType, mock_run_task: MagicMock, tmp_path: Path
+    ):
+        module.main(
+            [
+                str(tmp_path),
+                "--task",
+                "age",
+                "--aggregator",
+                "fedprox",
+                "--fedprox-mu",
+                "5",
+                "--alpha",
+                "0.5",
+            ]
+        )
+        kwargs = mock_run_task.call_args.kwargs
+        assert kwargs["aggregator"] == "fedprox"
+        assert kwargs["fedprox_mu"] == 5.0
+        assert kwargs["alpha"] == 0.5
+        assert kwargs["fpath_results"].name.startswith("results-fedprox-")
+        assert kwargs["fpath_results"].stem.endswith("-0.5alpha")
 
     def test_no_tensorboard(
         self, module: ModuleType, mock_run_task: MagicMock, tmp_path: Path

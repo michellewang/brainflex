@@ -1,8 +1,11 @@
 """Fed-BioMed training plan for tabular regression."""
 
 import numpy as np
+from declearn.optimizer.modules import ScaffoldClientModule
+from declearn.optimizer.regularizers import FedProxRegularizer
 from fedbiomed.common.datamanager import DataManager
 from fedbiomed.common.dataset import TabularDataset
+from fedbiomed.common.optimizers.optimizer import Optimizer
 from fedbiomed.common.training_plans import FedSGDRegressor
 
 
@@ -14,7 +17,31 @@ class TabularRegressorTrainingPlan(FedSGDRegressor):
             "import numpy as np",
             "from fedbiomed.common.datamanager import DataManager",
             "from fedbiomed.common.dataset import TabularDataset",
+            "from fedbiomed.common.optimizers.optimizer import Optimizer",
+            "from declearn.optimizer.modules import ScaffoldClientModule",
+            "from declearn.optimizer.regularizers import FedProxRegularizer",
         ]
+
+    def init_optimizer(self, optimizer_args):
+        if "lr" not in optimizer_args:
+            # use the default scikit-learn internal optimizer
+            return None
+
+        modules = [ScaffoldClientModule()] if optimizer_args.get("scaffold") else []
+        regularizers = (
+            [FedProxRegularizer(alpha=optimizer_args["fedprox_mu"])]
+            if optimizer_args.get("fedprox_mu")
+            else []
+        )
+        return Optimizer(
+            lr=optimizer_args["lr"], modules=modules, regularizers=regularizers
+        )
+
+    def post_init(self, model_args, training_args, *args, **kwargs):
+        super().post_init(model_args, training_args, *args, **kwargs)
+        # start from the global mean of the target instead of 0
+        if "target_mean" in model_args:
+            self.model().intercept_ = np.array([float(model_args["target_mean"])])
 
     def training_data(self):
         model_args = self.model_args()

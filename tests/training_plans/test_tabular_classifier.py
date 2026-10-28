@@ -64,3 +64,37 @@ class TestTabularClassifierTrainingPlan:
     ):
         dataset = load_dataset(from_source(plan_cls())(), model_args, fpath_csv)
         assert len(dataset) == 3
+
+    @pytest.mark.parametrize(
+        "optimizer_args,expected_modules,expected_regularizers",
+        [
+            ({"lr": 0.01}, [], []),
+            ({"lr": 0.01, "scaffold": True}, [("scaffold-client", {})], []),
+            (
+                {"lr": 0.01, "fedprox_mu": 2.0},
+                [],
+                [("fedprox", {"alpha": 2.0})],
+            ),
+        ],
+    )
+    def test_optimizer(
+        self,
+        plan_cls: type[BaseTrainingPlan],
+        model_args: dict,
+        optimizer_config: Callable[[BaseTrainingPlan, dict, dict], dict | None],
+        optimizer_args: dict,
+        expected_modules: list,
+        expected_regularizers: list,
+    ):
+        config = optimizer_config(plan_cls(), model_args, optimizer_args)
+        assert config["lrate"] == 0.01
+        assert config["modules"] == expected_modules
+        assert config["regularizers"] == expected_regularizers
+
+    def test_no_optimizer_args(
+        self,
+        plan_cls: type[BaseTrainingPlan],
+        model_args: dict,
+        optimizer_config: Callable[[BaseTrainingPlan, dict, dict], dict | None],
+    ):
+        assert optimizer_config(plan_cls(), model_args, {}) is None

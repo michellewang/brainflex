@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 from fedbiomed.common.dataset import Dataset
+from fedbiomed.common.optimizers.generic_optimizers import DeclearnOptimizer
 from fedbiomed.common.training_args import TrainingArgs
 from fedbiomed.common.training_plans import BaseTrainingPlan
 
@@ -57,6 +58,12 @@ def model_args() -> dict:
 
 
 @pytest.fixture
+def optimizer_config() -> Callable[[BaseTrainingPlan, dict, dict], dict | None]:
+    """Set up a training plan and get its declearn optimizer config, if any."""
+    return _optimizer_config
+
+
+@pytest.fixture
 def load_dataset() -> Callable[[BaseTrainingPlan, dict, Path], Dataset]:
     """Set up a training plan and load its dataset, like a Fed-BioMed node does."""
     return _load_dataset
@@ -66,6 +73,18 @@ def load_dataset() -> Callable[[BaseTrainingPlan, dict, Path], Dataset]:
 def from_source() -> Callable[[BaseTrainingPlan], type[BaseTrainingPlan]]:
     """Rebuild a training plan class from the source code sent to nodes."""
     return _from_source
+
+
+def _optimizer_config(
+    plan: BaseTrainingPlan, model_args: dict, optimizer_args: dict
+) -> dict | None:
+    plan.post_init(
+        dict(model_args),
+        TrainingArgs({"optimizer_args": optimizer_args}, only_required=False),
+    )
+    if not isinstance(plan.optimizer(), DeclearnOptimizer):
+        return None
+    return plan.optimizer().optimizer.get_state()["config"]
 
 
 def _load_dataset(plan: BaseTrainingPlan, model_args: dict, fpath: Path) -> Dataset:
