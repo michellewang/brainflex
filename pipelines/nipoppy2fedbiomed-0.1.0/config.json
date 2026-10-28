@@ -1,0 +1,22 @@
+{
+    "NAME": "nipoppy2fedbiomed",
+    "VERSION": "0.1.0",
+    "STEPS": [
+        {
+            "NAME": "age",
+            "INVOCATION_FILE": "invocation-[[STEP_NAME]].json",
+            "DESCRIPTOR_FILE": "descriptor.json",
+            "GENERATE_PYBIDS_DATABASE": false,
+            "ANALYSIS_LEVEL": "group"
+        },
+        {
+            "NAME": "sex",
+            "INVOCATION_FILE": "invocation-[[STEP_NAME]].json",
+            "DESCRIPTOR_FILE": "descriptor.json",
+            "GENERATE_PYBIDS_DATABASE": false,
+            "ANALYSIS_LEVEL": "group"
+        }
+    ],
+    "PIPELINE_TYPE": "processing",
+    "SCHEMA_VERSION": "1.0"
+}

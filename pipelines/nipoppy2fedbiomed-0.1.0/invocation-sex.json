@@ -1,0 +1,14 @@
+{
+    "script_path": "[[NIPOPPY_DPATH_PIPELINES]]/processing/nipoppy2fedbiomed-0.1.0/nipoppy2fedbiomed.py",
+    "nipoppy_root": "[[NIPOPPY_DPATH_ROOT]]",
+    "output_dir": "[[NIPOPPY_DPATH_PIPELINE_OUTPUT]]/sex",
+    "phenotype": ["nb:Age", "nb:Sex"],
+    "derivative": [
+        "freesurfer:7.3.2:idp/fs_stats-*/fs7.3.2-aparc.DKTatlas-thickness.tsv",
+        "freesurfer:7.3.2:idp/fs_stats-*/fs7.3.2-aseg-volume.tsv"
+    ],
+    "tag": [
+        "brainflex",
+        "sex"
+    ]
+}

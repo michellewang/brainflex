@@ -24,7 +24,7 @@ description = "Brain federated learning experiment"
 license = { file = "LICENSE" }
 name = "brainflex"
 readme = "README.md"
-requires-python = ">=3.11, <3.16"
+requires-python = ">=3.11, <3.12"
 dynamic = ["version"]
 
 [dependency-groups]
@@ -36,9 +36,12 @@ doc = [
     "sphinx-copybutton",
 ]
 test = [
+    "declearn>=2.6.1", # needs pin to avoid version conflict
+    "fedbiomed[researcher]",
     "pytest-cov",
     "pytest-mock",
     "pytest>=6.0.0",
+    "setuptools<81",
 ]
 
 [project.scripts]
