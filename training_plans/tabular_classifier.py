@@ -26,7 +26,7 @@ class TabularClassifierTrainingPlan(FedSGDClassifier):
         if "lr" not in optimizer_args:
             # use the default scikit-learn internal optimizer
             return None
-            
+
         modules = [ScaffoldClientModule()] if optimizer_args.get("scaffold") else []
         regularizers = (
             [FedProxRegularizer(alpha=optimizer_args["fedprox_mu"])]

@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import sys
+import warnings
 from enum import Enum
 from pathlib import Path
 from types import ModuleType
@@ -36,6 +37,10 @@ NODE_METRICS = {
     }
 }
 TRAINING_REPLIES = {0: {"NODE_1": {"success": True, "sample_size": 80}}}
+NODE_DATA = {
+    node: {"dataset_id": f"dataset_{node}", "name": f"name_{node}"}
+    for node in ["NODE_1", "NODE_2", "NODE_3"]
+}
 
 
 @pytest.fixture
@@ -100,6 +105,16 @@ def mock_run_task(module: ModuleType, mocker: MockerFixture) -> MagicMock:
 
 
 @pytest.fixture
+def mock_evaluate_held_out(module: ModuleType, mocker: MockerFixture) -> MagicMock:
+    return mocker.patch.object(module, "_evaluate_held_out")
+
+
+@pytest.fixture
+def mock_get_node_data(module: ModuleType, mocker: MockerFixture) -> MagicMock:
+    return mocker.patch.object(module, "_get_node_data", return_value=NODE_DATA)
+
+
+@pytest.fixture
 def fpath_csv(tmp_path: Path) -> Path:
     fpath = tmp_path / "dataset.csv"
     pd.DataFrame(
@@ -124,32 +139,80 @@ class TestLoadTrainingPlanClass:
         assert f"class {config.training_plan_class}" in plan_cls().source()
 
 
-class TestGetFpathOut:
-    def test_get_fpath_out(self, module: ModuleType, tmp_path: Path):
-        fpath = module._get_fpath_out(
-            tmp_path,
-            "age",
-            "results",
-            n_rounds=10,
-            batch_size=32,
-            n_updates=50,
-            learning_rate=0.001,
-            test_ratio=0.2,
-            aggregator="scaffold",
-            alpha=0.1,
-        )
-        assert fpath == (
+@pytest.fixture
+def path_helper(module: ModuleType, tmp_path: Path) -> object:
+    return module.PathHelper(
+        output_dir=tmp_path,
+        n_rounds=10,
+        batch_size=32,
+        n_updates=50,
+        learning_rate=0.001,
+        test_ratio=0.2,
+        aggregator="scaffold",
+        alpha=0.1,
+    )
+
+
+class TestPathHelper:
+    def test_get_fpath_out(self, path_helper: object, tmp_path: Path):
+        assert path_helper.get_fpath_out("age", "results") == (
             tmp_path
             / "age"
             / "results-scaffold-10rounds-50updates-32-0.001lr-0.2test-0.1alpha.json"
         )
 
-    def test_extension(self, module: ModuleType, tmp_path: Path):
-        fpath = module._get_fpath_out(
-            tmp_path, "sex", "model", 1, 1, 1, 0.1, 0.1, "fedavg", 0.1, extension=".pkl"
-        )
+    def test_extension(self, path_helper: object, tmp_path: Path):
+        fpath = path_helper.get_fpath_out("sex", "model", ".pkl")
         assert fpath.parent == tmp_path / "sex"
         assert fpath.suffix == ".pkl"
+
+    def test_held_out_node(self, path_helper: object):
+        fpath = path_helper.get_fpath_out(
+            "age", "model", ".pkl", held_out_node="NODE_1"
+        )
+        assert fpath.name.endswith("-0.1alpha-heldout_NODE_1.pkl")
+
+
+class TestGetNodeData:
+    def test_get_node_data(self, module: ModuleType, mock_experiment: MagicMock):
+        exp = mock_experiment.return_value
+        exp.training_data.return_value.data.return_value = NODE_DATA
+        assert module._get_node_data("age") == NODE_DATA
+        assert mock_experiment.call_args.kwargs["tags"] == ["brainflex", "age"]
+
+    def test_no_nodes(self, module: ModuleType, mock_experiment: MagicMock):
+        mock_experiment.return_value.training_data.return_value = None
+        assert module._get_node_data("age") == {}
+
+
+class TestEvaluateHeldOut:
+    def test_evaluate_held_out(
+        self, module: ModuleType, mock_experiment: MagicMock, mocker: MockerFixture
+    ):
+        mock_training_job = mocker.patch.object(module, "TrainingJob", autospec=True)
+        mock_experiment(
+            training_args={"test_ratio": 0.1, "test_on_local_updates": True}
+        )
+        exp = mock_experiment.return_value
+        exp.round_current.return_value = 3
+        exp.model_args.side_effect = None
+        exp.model_args.return_value = {"n_features": 2}
+        node_data_held_out = {"NODE_3": NODE_DATA["NODE_3"]}
+
+        module._evaluate_held_out(exp, node_data_held_out)
+
+        kwargs = mock_training_job.call_args.kwargs
+        assert kwargs["nodes"] == ["NODE_3"]
+        assert kwargs["do_training"] is False
+        assert kwargs["round_"] == 3
+        assert kwargs["experiment_id"] == exp.id
+        assert kwargs["model_args"] == {"n_features": 2}
+        assert kwargs["data"].data() == node_data_held_out
+        training_args = kwargs["training_args"]
+        assert training_args["test_ratio"] == 1.0
+        assert training_args["test_on_global_updates"] is True
+        assert training_args["test_on_local_updates"] is False
+        mock_training_job.return_value.execute.assert_called_once_with()
 
 
 class TestFilterFeatureCol:
@@ -348,6 +411,7 @@ class TestMoveTensorboardLogs:
 
 
 class TestRunTask:
+    @pytest.mark.filterwarnings("ignore:.*data leakage")
     def test_run_task(
         self, module: ModuleType, mock_experiment: MagicMock, tmp_path: Path
     ):
@@ -414,6 +478,7 @@ class TestRunTask:
             )
         )
 
+    @pytest.mark.filterwarnings("ignore:.*data leakage")
     def test_settings_saved_if_training_fails(
         self, module: ModuleType, mock_experiment: MagicMock, tmp_path: Path
     ):
@@ -439,6 +504,7 @@ class TestRunTask:
         assert mock_experiment.call_args.kwargs["agg_optimizer"] is None
         assert "results" not in json_data
 
+    @pytest.mark.filterwarnings("ignore:.*data leakage")
     def test_tensorboard(
         self, module: ModuleType, mock_experiment: MagicMock, tmp_path: Path
     ):
@@ -461,13 +527,87 @@ class TestRunTask:
         assert mock_experiment.call_args.kwargs["tensorboard"] is True
         assert (dpath_tensorboard / "NODE_2").is_dir()
 
+    @pytest.mark.parametrize(("task", "n_warnings"), [("age", 2), ("sex", 1)])
+    def test_leakage_warnings(
+        self,
+        module: ModuleType,
+        mock_experiment: MagicMock,
+        mock_evaluate_held_out: MagicMock,
+        tmp_path: Path,
+        task: str,
+        n_warnings: int,
+    ):
+        with pytest.warns(UserWarning, match="data leakage") as record:
+            module._run_task(
+                task,
+                n_rounds=1,
+                batch_size=8,
+                n_updates=10,
+                learning_rate=0.1,
+                test_ratio=0.2,
+                aggregator="fedavg",
+                fedprox_mu=1.0,
+                alpha=0.1,
+                settings={},
+                fpath_results=tmp_path / "results.json",
+                fpath_model=tmp_path / "model.pkl",
+            )
+        assert len(record) == n_warnings
+        assert mock_experiment.call_args.kwargs["nodes"] is None
+        training_args = mock_experiment.call_args.kwargs["training_args"]
+        assert training_args["shuffle_testing_dataset"] is False
+        mock_evaluate_held_out.assert_not_called()
 
-def _write_results(module: ModuleType, dpath: Path, task: str, data: dict) -> None:
+    def test_held_out_node(
+        self,
+        module: ModuleType,
+        mock_experiment: MagicMock,
+        mock_evaluate_held_out: MagicMock,
+        tmp_path: Path,
+    ):
+        fpath_results = tmp_path / "results.json"
+        node_data_held_out = {"NODE_3": NODE_DATA["NODE_3"]}
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            module._run_task(
+                "age",
+                n_rounds=3,
+                batch_size=8,
+                n_updates=10,
+                learning_rate=0.1,
+                test_ratio=0.2,
+                aggregator="scaffold",
+                fedprox_mu=1.0,
+                alpha=0.1,
+                settings={},
+                fpath_results=fpath_results,
+                fpath_model=tmp_path / "model.pkl",
+                training_nodes=["NODE_1", "NODE_2"],
+                node_data_held_out=node_data_held_out,
+            )
+        assert mock_experiment.call_args.kwargs["nodes"] == ["NODE_1", "NODE_2"]
+        training_args = mock_experiment.call_args.kwargs["training_args"]
+        assert training_args["shuffle_testing_dataset"] is True
+        exp = mock_experiment.return_value
+        # before each round and after the last one
+        assert mock_evaluate_held_out.call_count == 4
+        mock_evaluate_held_out.assert_called_with(exp, node_data_held_out)
+        json_data = json.loads(fpath_results.read_text())
+        assert json_data["settings"]["training_nodes"] == ["NODE_1", "NODE_2"]
+        assert json_data["settings"]["held_out_node"] == node_data_held_out
+        assert "node_metrics" in json_data["results"]
+
+
+def _write_results(
+    module: ModuleType,
+    dpath: Path,
+    task: str,
+    data: dict,
+    held_out_node: str | None = None,
+) -> None:
     """Write a results file for the default CLI arguments."""
-    fpath = module._get_fpath_out(
-        dpath,
-        task,
-        module.PREFIX_RESULTS,
+    fpath = module.PathHelper(
+        output_dir=dpath,
         n_rounds=module.DEFAULT_N_ROUNDS,
         batch_size=module.DEFAULT_BATCH_SIZE,
         n_updates=module.DEFAULT_N_UPDATES,
@@ -475,7 +615,7 @@ def _write_results(module: ModuleType, dpath: Path, task: str, data: dict) -> No
         test_ratio=module.DEFAULT_TEST_RATIO,
         aggregator=module.DEFAULT_AGGREGATOR,
         alpha=module.DEFAULT_ALPHA,
-    )
+    ).get_fpath_out(task, module.PREFIX_RESULTS, held_out_node=held_out_node)
     fpath.parent.mkdir(parents=True)
     fpath.write_text(json.dumps(data))
 
@@ -485,7 +625,16 @@ class TestMain:
         self, module: ModuleType, mock_run_task: MagicMock, tmp_path: Path
     ):
         module.main(
-            [str(tmp_path), "--task", "sex", "--task", "age", "--n-rounds", "2"]
+            [
+                str(tmp_path),
+                "--task",
+                "sex",
+                "--task",
+                "age",
+                "--n-rounds",
+                "2",
+                "--no-cv",
+            ]
         )
         assert [call.kwargs["task"] for call in mock_run_task.call_args_list] == [
             "sex",
@@ -523,6 +672,7 @@ class TestMain:
                 "5",
                 "--alpha",
                 "0.5",
+                "--no-cv",
             ]
         )
         kwargs = mock_run_task.call_args.kwargs
@@ -535,7 +685,7 @@ class TestMain:
     def test_no_tensorboard(
         self, module: ModuleType, mock_run_task: MagicMock, tmp_path: Path
     ):
-        module.main([str(tmp_path), "--task", "age", "--no-tensorboard"])
+        module.main([str(tmp_path), "--task", "age", "--no-tensorboard", "--no-cv"])
         assert mock_run_task.call_args.kwargs["dpath_tensorboard"] is None
         assert mock_run_task.call_args.kwargs["settings"]["tensorboard"] is False
 
@@ -544,7 +694,7 @@ class TestMain:
     ):
         _write_results(module, tmp_path.resolve(), "age", {"results": {}})
         with pytest.raises(SystemExit, match="--overwrite"):
-            module.main([str(tmp_path), "--task", "sex", "--task", "age"])
+            module.main([str(tmp_path), "--task", "sex", "--task", "age", "--no-cv"])
         mock_run_task.assert_not_called()
 
     def test_existing_settings_only(
@@ -552,15 +702,75 @@ class TestMain:
     ):
         # a run that failed before any results were saved can be rerun
         _write_results(module, tmp_path.resolve(), "age", {"settings": {}})
-        module.main([str(tmp_path), "--task", "age"])
+        module.main([str(tmp_path), "--task", "age", "--no-cv"])
         mock_run_task.assert_called_once()
 
     def test_overwrite(
         self, module: ModuleType, mock_run_task: MagicMock, tmp_path: Path
     ):
         _write_results(module, tmp_path.resolve(), "age", {"results": {}})
-        module.main([str(tmp_path), "--task", "age", "--overwrite"])
+        module.main([str(tmp_path), "--task", "age", "--overwrite", "--no-cv"])
         mock_run_task.assert_called_once()
+
+    def test_cv(
+        self,
+        module: ModuleType,
+        mock_run_task: MagicMock,
+        mock_get_node_data: MagicMock,
+        tmp_path: Path,
+    ):
+        # CV is on by default
+        module.main([str(tmp_path), "--task", "sex", "--task", "age"])
+        calls = [call.kwargs for call in mock_run_task.call_args_list]
+        assert [
+            (kwargs["task"], *kwargs["node_data_held_out"]) for kwargs in calls
+        ] == [(task, node) for task in ["sex", "age"] for node in NODE_DATA]
+        kwargs = calls[0]
+        assert kwargs["training_nodes"] == ["NODE_2", "NODE_3"]
+        assert kwargs["node_data_held_out"] == {"NODE_1": NODE_DATA["NODE_1"]}
+        assert kwargs["fpath_results"].stem.endswith("-heldout_NODE_1")
+        assert kwargs["fpath_model"].stem.endswith("-heldout_NODE_1")
+        assert kwargs["dpath_tensorboard"].name.endswith("-heldout_NODE_1")
+        assert kwargs["settings"]["cv"] is True
+
+    def test_no_cv(
+        self,
+        module: ModuleType,
+        mock_run_task: MagicMock,
+        mock_get_node_data: MagicMock,
+        tmp_path: Path,
+    ):
+        module.main([str(tmp_path), "--task", "age", "--no-cv"])
+        mock_get_node_data.assert_not_called()
+        kwargs = mock_run_task.call_args.kwargs
+        assert kwargs["training_nodes"] is None
+        assert kwargs["node_data_held_out"] is None
+
+    def test_cv_one_node(
+        self,
+        module: ModuleType,
+        mock_run_task: MagicMock,
+        mock_get_node_data: MagicMock,
+        tmp_path: Path,
+    ):
+        mock_get_node_data.return_value = {"NODE_1": NODE_DATA["NODE_1"]}
+        with pytest.raises(ValueError, match="at least 2 nodes"):
+            module.run_experiments(tmp_path, ["age"])
+        mock_run_task.assert_not_called()
+
+    def test_cv_existing_results(
+        self,
+        module: ModuleType,
+        mock_run_task: MagicMock,
+        mock_get_node_data: MagicMock,
+        tmp_path: Path,
+    ):
+        _write_results(
+            module, tmp_path.resolve(), "age", {"results": {}}, held_out_node="NODE_2"
+        )
+        with pytest.raises(SystemExit, match="heldout_NODE_2"):
+            module.main([str(tmp_path), "--task", "age"])
+        mock_run_task.assert_not_called()
 
     @pytest.mark.parametrize("args", [[], ["--task", "height"]])
     def test_invalid_task(

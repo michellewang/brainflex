@@ -8,6 +8,7 @@ import json
 import math
 import shutil
 import sys
+import warnings
 from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
@@ -17,8 +18,11 @@ import numpy as np
 from declearn.optimizer.modules import ScaffoldServerModule
 from fedbiomed.common.metrics import MetricTypes
 from fedbiomed.common.optimizers.optimizer import Optimizer
+from fedbiomed.common.training_args import TrainingArgs
 from fedbiomed.common.training_plans import BaseTrainingPlan
+from fedbiomed.researcher.datasets import FederatedDataset
 from fedbiomed.researcher.federated_workflows import Experiment, FederatedAnalytics
+from fedbiomed.researcher.federated_workflows.jobs import TrainingJob
 
 DPATH_TRAINING_PLANS = Path(__file__).resolve().parents[1] / "training_plans"
 PREFIX_MODEL = "model"
@@ -47,6 +51,41 @@ class TaskConfig:
     # whether the model intercept is initialized to the global target mean
     with_target_mean: bool = False
     extra_model_args: dict = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class PathHelper:
+    output_dir: Path
+    n_rounds: int
+    batch_size: int
+    n_updates: int
+    learning_rate: float
+    test_ratio: float
+    aggregator: str
+    alpha: float
+
+    def get_fpath_out(
+        self,
+        task: str,
+        prefix: str,
+        extension: str = ".json",
+        held_out_node: str | None = None,
+    ) -> Path:
+        stem = "-".join(
+            [
+                prefix,
+                self.aggregator,
+                f"{self.n_rounds}rounds",
+                f"{self.n_updates}updates",
+                f"{self.batch_size}",
+                f"{self.learning_rate}lr",
+                f"{self.test_ratio}test",
+                f"{self.alpha}alpha",
+            ]
+        )
+        if held_out_node is not None:
+            stem = f"{stem}-heldout_{held_out_node}"
+        return self.output_dir / task / f"{stem}{extension}"
 
 
 TASKS = {
@@ -139,35 +178,16 @@ def _get_parser() -> argparse.ArgumentParser:
         default=True,
         help="Save node metrics as TensorBoard logs. Default: True.",
     )
-    return parser
-
-
-def _get_fpath_out(
-    output_dir: Path,
-    task: str,
-    prefix: str,
-    n_rounds: int,
-    batch_size: int,
-    n_updates: int,
-    learning_rate: float,
-    test_ratio: float,
-    aggregator: str,
-    alpha: float,
-    extension: str = ".json",
-) -> Path:
-    stem = "-".join(
-        [
-            prefix,
-            aggregator,
-            f"{n_rounds}rounds",
-            f"{n_updates}updates",
-            f"{batch_size}",
-            f"{learning_rate}lr",
-            f"{test_ratio}test",
-            f"{alpha}alpha",
-        ]
+    parser.add_argument(
+        "--cv",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Leave-one-node-out cross-validation: train on all nodes but one and"
+            " evaluate on the held-out node. Default: True."
+        ),
     )
-    return output_dir / task / f"{stem}{extension}"
+    return parser
 
 
 def _filter_feature_col(col: str) -> bool:
@@ -235,6 +255,12 @@ def _load_training_plan_class(module_name: str, class_name: str) -> type:
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return getattr(module, class_name)
+
+
+def _get_node_data(task: str) -> dict[str, dict]:
+    """Get the dataset metadata of each node that has data for a task."""
+    fds = Experiment(tags=[COMMON_TAG, task]).training_data()
+    return fds.data() if fds is not None else {}
 
 
 def _get_feature_stats(
@@ -323,6 +349,39 @@ def _move_tensorboard_logs(exp: Experiment, dpath_tensorboard: Path) -> None:
         shutil.move(dpath_node_src, dpath_node_dest)
 
 
+def _evaluate_held_out(exp: Experiment, node_data_held_out: dict[str, dict]) -> None:
+    """Test the current global model on all the data of the held-out node.
+
+    Same as the validation-only round of ``Experiment.run_once(test_after=True)``,
+    but on a node that is not part of the experiment.
+    """
+    training_args = TrainingArgs(
+        {
+            **exp.training_args(),
+            "test_ratio": 1.0,
+            "test_on_global_updates": True,
+            "test_on_local_updates": False,
+            "shuffle_testing_dataset": False,
+        },
+        only_required=False,
+    )
+    TrainingJob(
+        researcher_id=exp.researcher_id,
+        requests=exp.requests,
+        nodes=list(node_data_held_out),
+        keep_files_dir=exp.experimentation_path(),
+        experiment_id=exp.id,
+        round_=exp.round_current(),
+        training_plan=exp.training_plan(),
+        training_args=training_args,
+        model_args=exp.model_args(),
+        data=FederatedDataset(node_data_held_out),
+        nodes_state_ids={},
+        aggregator_args={},
+        do_training=False,
+    ).execute()
+
+
 def _run_task(
     task: str,
     n_rounds: int,
@@ -337,11 +396,19 @@ def _run_task(
     fpath_results: Path,
     fpath_model: Path,
     dpath_tensorboard: Path | None = None,
+    training_nodes: list[str] | None = None,
+    node_data_held_out: dict[str, dict] | None = None,
 ) -> BaseTrainingPlan:
-    """Train a model for a task and save it in a task-specific output directory."""
+    """Train a model for a task and save it in a task-specific output directory.
+
+    If ``node_data_held_out`` is given, only ``training_nodes`` are used for training
+    and the held-out node is used for testing.
+    """
     config = TASKS[task]
+    is_cv = node_data_held_out is not None
     exp = Experiment(
         tags=[COMMON_TAG, task],
+        nodes=training_nodes,
         training_args={
             "loader_args": {"batch_size": batch_size},
             "num_updates": n_updates,
@@ -352,12 +419,26 @@ def _run_task(
             "optimizer_args": _build_optimizer_args(
                 learning_rate, aggregator, fedprox_mu
             ),
-            # NOTE: if Leave-one-node-out CV, set shuffle_testing_dataset=True
+            # resample the local train/validation split at each round
+            "shuffle_testing_dataset": is_cv,
         },
         agg_optimizer=_get_agg_optimizer(aggregator),
         round_limit=n_rounds,
         tensorboard=dpath_tensorboard is not None,
     )
+
+    if not is_cv:
+        warnings.warn(
+            "Feature z-scoring statistics are computed on all node data, including"
+            " the test data (data leakage). Use --cv to avoid this",
+            stacklevel=2,
+        )
+        if config.with_target_mean:
+            warnings.warn(
+                "The intercept is initialized with the target mean of all node data,"
+                " including the test data (data leakage). Use --cv to avoid this",
+                stacklevel=2,
+            )
 
     # the training plan needs the feature stats to be instantiated
     columns, mean, std, excluded_columns, target_mean = _get_feature_stats(
@@ -376,6 +457,8 @@ def _run_task(
     json_data = {
         "settings": {
             "runtime_args": settings,
+            "training_nodes": training_nodes,
+            "held_out_node": node_data_held_out,
             "excluded_columns": excluded_columns,
             "model_args": exp.model_args(),
             "training_args": exp.training_args(),
@@ -386,12 +469,19 @@ def _run_task(
 
     for round_ in range(1, n_rounds + 1):
         print(f"[{task}] Round {round_}/{n_rounds}")
+        if is_cv:
+            _evaluate_held_out(exp, node_data_held_out)
         exp.run_once()
         json_data["results"] = {
             # node training losses and test metrics (no public getter)
             "node_metrics": exp.monitor()._metric_store,
             "training_replies": exp.save_training_replies(),
         }
+        _save_json(fpath_results, json_data)
+    if is_cv:
+        # final global model
+        _evaluate_held_out(exp, node_data_held_out)
+        json_data["results"]["node_metrics"] = exp.monitor()._metric_store
         _save_json(fpath_results, json_data)
     print(f"[{task}] Saved settings and results to {fpath_results}")
 
@@ -418,78 +508,65 @@ def run_experiments(
     alpha: float = DEFAULT_ALPHA,
     overwrite: bool = False,
     tensorboard: bool = True,
+    cv: bool = True,
 ) -> None:
     """Train and save a global model for each task."""
     output_dir = output_dir.resolve()
     settings = locals().copy()
 
-    fpaths_results = []
-    fpaths_model = []
-    dpaths_tensorboard = []
+    # (task, held-out node) pairs, with None for no held-out node
+    runs: list[tuple[str, str | None]] = []
+    node_data: dict[str, dict[str, dict]] = {}
     for task in tasks:
-        fpaths_results.append(
-            _get_fpath_out(
-                output_dir=output_dir,
-                task=task,
-                prefix=PREFIX_RESULTS,
-                n_rounds=n_rounds,
-                batch_size=batch_size,
-                n_updates=n_updates,
-                learning_rate=learning_rate,
-                test_ratio=test_ratio,
-                aggregator=aggregator,
-                alpha=alpha,
-                extension=".json",
+        if not cv:
+            runs.append((task, None))
+            continue
+        node_data[task] = _get_node_data(task)
+        if len(node_data[task]) < 2:
+            raise ValueError(
+                f"CV needs at least 2 nodes, but {task} has {len(node_data[task])}"
             )
-        )
-        fpaths_model.append(
-            _get_fpath_out(
-                output_dir=output_dir,
-                task=task,
-                prefix=PREFIX_MODEL,
-                n_rounds=n_rounds,
-                batch_size=batch_size,
-                n_updates=n_updates,
-                learning_rate=learning_rate,
-                test_ratio=test_ratio,
-                aggregator=aggregator,
-                alpha=alpha,
-                extension=".pkl",
-            )
-        )
-        dpaths_tensorboard.append(
-            _get_fpath_out(
-                output_dir=output_dir,
-                task=task,
-                prefix=PREFIX_TENSORBOARD,
-                n_rounds=n_rounds,
-                batch_size=batch_size,
-                n_updates=n_updates,
-                learning_rate=learning_rate,
-                test_ratio=test_ratio,
-                aggregator=aggregator,
-                alpha=alpha,
-                extension="",
-            )
-            if tensorboard
-            else None
-        )
+        runs.extend((task, node) for node in sorted(node_data[task]))
+
+    path_helper = PathHelper(
+        output_dir=output_dir,
+        n_rounds=n_rounds,
+        batch_size=batch_size,
+        n_updates=n_updates,
+        learning_rate=learning_rate,
+        test_ratio=test_ratio,
+        aggregator=aggregator,
+        alpha=alpha,
+    )
 
     # error out if one of the result files already exists
-    fpaths_results_existing = [
-        fpath
-        for fpath in fpaths_results
-        if fpath.exists() and "results" in json.loads(fpath.read_text())
-    ]
+    fpaths_results_existing = []
+    for task, held_out_node in runs:
+        fpath = path_helper.get_fpath_out(
+            task=task,
+            prefix=PREFIX_RESULTS,
+            extension=".json",
+            held_out_node=held_out_node,
+        )
+        if fpath.exists() and "results" in json.loads(fpath.read_text()):
+            fpaths_results_existing.append(fpath)
+
     if fpaths_results_existing and not overwrite:
         raise FileExistsError(
             f"Results already exist: {[str(fpath) for fpath in fpaths_results_existing]}."
             " Use --overwrite to overwrite them"
         )
 
-    for task, fpath_results, fpath_model, dpath_tensorboard in zip(
-        tasks, fpaths_results, fpaths_model, dpaths_tensorboard
-    ):
+    for task, held_out_node in runs:
+        if held_out_node is None:
+            # use all nodes for training
+            training_nodes = None
+            node_data_held_out = None
+        else:
+            print(f"[{task}] Holding out node {held_out_node}")
+            training_nodes = sorted(set(node_data[task]) - {held_out_node})
+            node_data_held_out = {held_out_node: node_data[task][held_out_node]}
+
         _run_task(
             task=task,
             n_rounds=n_rounds,
@@ -501,9 +578,30 @@ def run_experiments(
             fedprox_mu=fedprox_mu,
             alpha=alpha,
             settings=settings,
-            fpath_results=fpath_results,
-            fpath_model=fpath_model,
-            dpath_tensorboard=dpath_tensorboard,
+            fpath_results=path_helper.get_fpath_out(
+                task=task,
+                prefix=PREFIX_RESULTS,
+                extension=".json",
+                held_out_node=held_out_node,
+            ),
+            fpath_model=path_helper.get_fpath_out(
+                task=task,
+                prefix=PREFIX_MODEL,
+                extension=".pkl",
+                held_out_node=held_out_node,
+            ),
+            dpath_tensorboard=(
+                path_helper.get_fpath_out(
+                    task=task,
+                    prefix=PREFIX_TENSORBOARD,
+                    extension="",
+                    held_out_node=held_out_node,
+                )
+                if tensorboard
+                else None
+            ),
+            training_nodes=training_nodes,
+            node_data_held_out=node_data_held_out,
         )
 
 
@@ -523,6 +621,7 @@ def main(argv: list[str] | None = None) -> None:
             alpha=args.alpha,
             overwrite=args.overwrite,
             tensorboard=args.tensorboard,
+            cv=args.cv,
         )
     except FileExistsError as e:
         sys.exit(f"Error: {e}")
