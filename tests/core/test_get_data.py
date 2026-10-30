@@ -6,10 +6,10 @@ import pytest
 from pytest_mock import MockerFixture
 
 from brainflex.core.get_data import get_data
-from brainflex.core.init import init
 from brainflex.utils.constants import (
-    DATA_DIRNAME,
+    BRAINFLEX_DIRNAME,
     DERIVATIVES_BUCKET,
+    NIPOPPY_STUDY_DIRNAME,
     OPENNEURO_BUCKET,
 )
 
@@ -88,14 +88,14 @@ def mock_s3(
 
 @pytest.fixture
 def root(tmp_path: Path) -> Path:
-    init(tmp_path)
+    (tmp_path / BRAINFLEX_DIRNAME).mkdir()
     return tmp_path
 
 
 class TestGetData:
     def test_get_data(self, mock_s3: dict[tuple[str, str], bytes], root: Path):
         dpath_study = get_data(root, DATASET_ID)
-        assert dpath_study == root / DATA_DIRNAME / DATASET_ID
+        assert dpath_study == root / NIPOPPY_STUDY_DIRNAME
 
         # BIDS: top-level files downloaded, subject files are empty placeholders
         dpath_bids = dpath_study / "bids"
@@ -234,7 +234,7 @@ class TestGetData:
             get_data(root, DATASET_ID)
 
     def test_already_exists(self, mock_s3: dict[tuple[str, str], bytes], root: Path):
-        dpath_study = root / DATA_DIRNAME / DATASET_ID
+        dpath_study = root / NIPOPPY_STUDY_DIRNAME
         dpath_study.mkdir(parents=True)
         (dpath_study / "file.txt").write_text("keep me")
         with pytest.raises(FileExistsError, match="already exists"):
@@ -242,7 +242,7 @@ class TestGetData:
         assert (dpath_study / "file.txt").read_text() == "keep me"
 
     def test_overwrite(self, mock_s3: dict[tuple[str, str], bytes], root: Path):
-        dpath_study = root / DATA_DIRNAME / DATASET_ID
+        dpath_study = root / NIPOPPY_STUDY_DIRNAME
         dpath_study.mkdir(parents=True)
         (dpath_study / "file.txt").write_text("old")
         get_data(root, DATASET_ID, overwrite=True)

@@ -227,6 +227,20 @@ class TestNipoppy2fedbiomed:
         assert info["name"] == "my-dataset"
         assert info["description"] == "My dataset"
 
+    def test_dataset_path(
+        self, module: ModuleType, nipoppy_root: Path, output_dir: Path
+    ):
+        _, fpath_json = module.nipoppy2fedbiomed(
+            nipoppy_root,
+            output_dir,
+            phenotypes=["nb:Age"],
+            derivatives=[],
+            tags=["tag"],
+            dataset_path="$NIPOPPY_ROOT/output/dataset.csv",
+        )
+        info = json.loads(fpath_json.read_text())
+        assert info["path"] == "$NIPOPPY_ROOT/output/dataset.csv"
+
     def test_drops_missing(
         self,
         module: ModuleType,
@@ -306,6 +320,8 @@ class TestMain:
                 "brainflex",
                 "--name",
                 "my-dataset",
+                "--dataset-path",
+                "$NIPOPPY_ROOT/output/dataset.csv",
             ]
         )
         assert "Wrote 3 rows" in capsys.readouterr().out
@@ -314,6 +330,7 @@ class TestMain:
         info = json.loads((output_dir / "dataset_info.json").read_text())
         assert info["name"] == "my-dataset"
         assert info["tags"] == "brainflex"
+        assert info["path"] == "$NIPOPPY_ROOT/output/dataset.csv"
 
     def test_tag_required(
         self, module: ModuleType, nipoppy_root: Path, output_dir: Path

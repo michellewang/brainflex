@@ -22,7 +22,7 @@ def get_data_cli(
             "--overwrite",
             "--force",
             "-f",
-            help="Replace the dataset if it already exists.",
+            help="Replace the Nipoppy study if it already exists.",
         ),
     ] = False,
     full_rawbids: Annotated[

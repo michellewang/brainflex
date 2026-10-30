@@ -34,3 +34,13 @@ uv run make -C docs html
 cd docs/_build/html
 python -m http.server
 ```
+
+### Docker images
+
+- `vpn-client`: WireGuard VPN client
+- `vpn-server`: WireGuard VPN server, built on top of `vpn-client`
+
+### Releases
+
+CLI releases are tagged `cli/vX.Y.Z`.
+Docker image releases are tagged `docker/vX.Y.Z`
