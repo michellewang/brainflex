@@ -1,5 +1,7 @@
 # Fed-BioMed node
 
+<!-- TODO split into Part 1 and Part 2 -->
+
 All commands on this page assume the working directory is the root of the `brainflex-node` repository.
 
 The node runs with Docker Compose as two containers:
@@ -45,10 +47,14 @@ Fed-BioMed node files (configuration, database, data) are in `fbm-node`, mounted
 Register the datasets [created by `nipoppy2fedbiomed`](fedbiomed_dataset.md):
 
 ```bash
-for task in age sex
-do
-    docker compose exec -u fedbiomed node fedbiomed node -p /fbm-node dataset add --file /nipoppy_study/derivatives/nipoppy2fedbiomed/0.1.0/output/${task}/dataset_info.json
-done
+docker compose exec -u fedbiomed node fedbiomed node -p /fbm-node dataset add --file /nipoppy_study/derivatives/nipoppy2fedbiomed/0.1.0/output/age/dataset_info.json
+docker compose exec -u fedbiomed node fedbiomed node -p /fbm-node dataset add --file /nipoppy_study/derivatives/nipoppy2fedbiomed/0.1.0/output/sex/dataset_info.json
+```
+
+<!-- TODO -->
+```bash
+docker compose exec -u fedbiomed node fedbiomed node -p /fbm-node training-plan view
+docker compose exec -u fedbiomed node fedbiomed node -p /fbm-node training-plan approve
 ```
 
 Check that they are listed:

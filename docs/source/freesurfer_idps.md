@@ -11,7 +11,7 @@ Install the FreeSurfer and FreeSurfer stats extraction pipelines:
 nipoppy pipeline install 21929473
 
 # fs_stats
-nipoppy pipeline install <FS_STATS_ZENODO_ID>
+nipoppy pipeline install 23752946
 ```
 
 Confirm that the pipeline have been installed correctly:
@@ -30,7 +30,7 @@ If you do not have a FreeSurfer license, follow [these instructions](https://sur
 ## Extract FreeSurfer statistics
 
 ```bash
-nipoppy extract --pipeline fs_stats --pipeline-step docker
+nipoppy extract --pipeline fs_stats
 ```
 
 This should write a set of files in ??
