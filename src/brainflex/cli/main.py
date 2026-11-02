@@ -5,7 +5,6 @@ from typing import Annotated
 import typer
 
 from brainflex import __version__
-from brainflex.cli.check import check_cli
 from brainflex.cli.console import render_warnings
 from brainflex.cli.get_data import get_data_cli
 from brainflex.cli.init import init_cli
@@ -40,7 +39,6 @@ def main(
     ctx.with_resource(render_warnings())
 
 
-app.command("check")(check_cli)
 app.command("get-data")(get_data_cli)
 app.command("init")(init_cli)
 app.command("record")(record_cli)
