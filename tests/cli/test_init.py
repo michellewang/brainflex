@@ -102,7 +102,7 @@ class TestInit:
         "error",
         [
             FileExistsError("already initialized"),
-            FileNotFoundError("Not a brainflex project"),
+            FileNotFoundError("VPN configuration file not found"),
         ],
     )
     def test_init_error(
@@ -118,4 +118,4 @@ class TestInit:
             app, ["init", str(fpath_vpn_config), "--project", str(dpath_root)]
         )
         assert result.exit_code == 1
-        assert str(error) in result.stderr
+        assert f"ERROR: {error}" in result.stderr

@@ -1,3 +1,4 @@
+import warnings
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -97,13 +98,12 @@ class TestRecord:
         assert result.exit_code == 2
         mock_record.assert_not_called()
 
-    def test_not_initialized(
-        self, runner: CliRunner, mock_record: MagicMock, dpath_root: Path
-    ):
-        mock_record.side_effect = FileNotFoundError("Project not initialized")
+    def test_warning(self, runner: CliRunner, mock_record: MagicMock, dpath_root: Path):
+        mock_record.side_effect = lambda *args, **kwargs: warnings.warn(
+            "step get-data was already started", stacklevel=2
+        )
         result = runner.invoke(
             app, ["record", "get-data", "start", "--project", str(dpath_root)]
         )
-        assert result.exit_code == 1
-        assert "not initialized" in result.stderr
-        assert "brainflex init" in result.stderr
+        assert result.exit_code == 0
+        assert "WARNING: step get-data was already started" in result.stderr

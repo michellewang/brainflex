@@ -121,7 +121,7 @@ class TestGetData:
             app, ["get-data", "ds000001", "--project", str(dpath_root)]
         )
         assert result.exit_code == 1
-        assert "already exists" in result.stderr
+        assert "ERROR: Dataset already exists" in result.stderr
         assert "--overwrite" in result.stderr
 
     @pytest.mark.parametrize(
@@ -144,4 +144,5 @@ class TestGetData:
             app, ["get-data", "ds000001", "--project", str(dpath_root)]
         )
         assert result.exit_code == 1
+        assert "ERROR: " in result.stderr
         assert message in result.stderr
