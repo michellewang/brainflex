@@ -113,6 +113,11 @@ groups
 
 If `docker` is not in any of the groups listed, follow instructions [here](https://docs.docker.com/engine/install/linux-postinstall/#add-your-user-to-the-docker-group).
 
+## Network prerequisite
+
+In order to join the federated network, the machine needs to have outbound UDP access to an external server (see `VPN_SERVER_ENDPOINT` in `config.env` file).
+Replies from the server must also be allowed back in.
+
 ## Project initialization
 
 From inside the `brainflex-node` directory, initialize configuration files specific to your node.
