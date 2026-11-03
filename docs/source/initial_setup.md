@@ -98,6 +98,21 @@ You should get something like this:
 Docker Compose version vX.Y.Z
 ```
 
+```{attention}
+Installing Docker and Docker Compose requires `sudo` privileges.
+If you do not have `sudo` privileges, you will need to ask a system admin do to the installation for you.
+```
+
+### Troubleshooting
+
+If you get a `permission denied` error, check if your user is in the `docker` group:
+
+```
+groups
+```
+
+If `docker` is not in any of the groups listed, follow instructions [here](https://docs.docker.com/engine/install/linux-postinstall/#add-your-user-to-the-docker-group).
+
 ## Project initialization
 
 From inside the `brainflex-node` directory, initialize configuration files specific to your node.
