@@ -27,3 +27,24 @@ bagel harmonize-pheno \
     --dictionary nipoppy_study/tabular/pheno_annotated.json \
     --output nipoppy_study/tabular/harmonized.tsv
 ```
+
+The output file at `nipoppy_study/tabular/harmonized.tsv` should have 4 columns with harmonized column names and values.
+
+```bash
+head nipoppy_study/tabular/harmonized.tsv
+```
+
+```{code-block}
+:caption: Example output
+nb:ParticipantID	nb:SessionID	nb:Sex	nb:Age
+sub-1	ses-unnamed	snomed:248153007	20.0
+sub-2	ses-unnamed	snomed:248152002	25.0
+sub-3	ses-unnamed	snomed:248153007	30.0
+sub-4	ses-unnamed	snomed:248152002	35.0
+sub-5	ses-unnamed	snomed:248153007	40.0
+sub-6	ses-unnamed	snomed:248152002	45.0
+sub-7	ses-unnamed	snomed:248153007	50.0
+sub-8	ses-unnamed	snomed:248152002	55.0
+sub-9	ses-unnamed	snomed:248153007	60.0
+```
+
