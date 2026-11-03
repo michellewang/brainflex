@@ -24,11 +24,11 @@ nipoppy pipeline list --study nipoppy_study
 
 ```{code-block}
 :caption: Output
-WARNING  No available bidsification pipelines                                                                                        
-INFO     Available processing pipelines and versions                                                                                 
-INFO             - freesurfer (7.3.2)                                                                                                
-INFO     Available extraction pipelines and versions                                                                                 
-INFO             - fs_stats (0.3.0)                                                                                                  
+WARNING  No available bidsification pipelines
+INFO     Available processing pipelines and versions
+INFO             - freesurfer (7.3.2)
+INFO     Available extraction pipelines and versions
+INFO             - fs_stats (0.3.0)
 ```
 
 ## Configure the fs_stats pipeline with your FreeSurfer license
@@ -62,15 +62,15 @@ This will print a lot of output, with the final lines being this:
 
 ```{code-block}
 :caption: Output
-INFO     [RUN STDOUT] Exit code                                                                                                      
-INFO     [RUN STDOUT] 0                                                                                                              
-INFO     [RUN STDOUT] Error message                                                                                                  
-INFO     [RUN STDOUT]                                                                                                                
-INFO     [RUN STDOUT] Output files                                                                                                   
-INFO     [RUN STDOUT]                                                                                                                
-INFO     [RUN STDOUT] Missing files                                                                                                  
-INFO     [RUN STDOUT]                                                                                                                
-INFO     [RUN STDOUT]                                                                                                                
+INFO     [RUN STDOUT] Exit code
+INFO     [RUN STDOUT] 0
+INFO     [RUN STDOUT] Error message
+INFO     [RUN STDOUT]
+INFO     [RUN STDOUT] Output files
+INFO     [RUN STDOUT]
+INFO     [RUN STDOUT] Missing files
+INFO     [RUN STDOUT]
+INFO     [RUN STDOUT]
 INFO     Ran on the entire study 🎉🎉🎉 
 ```
 
