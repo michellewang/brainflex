@@ -20,7 +20,7 @@ caption: Instructions
 initial_setup
 freesurfer_idps
 phenotypic_files
-fedbiomed_dataset
-fedbiomed_node_part1
-fedbiomed_node_part2
+fl_ready_dataset
+fedbiomed_node_part_1
+fedbiomed_node_part_2
 ```

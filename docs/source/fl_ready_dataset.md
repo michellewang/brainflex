@@ -1,4 +1,4 @@
-# Fed-BioMed dataset
+# FL-ready dataset
 
 ## Pipeline installation
 
@@ -33,7 +33,7 @@ nipoppy process --pipeline nipoppy2fedbiomed --pipeline-step age --study nipoppy
 nipoppy process --pipeline nipoppy2fedbiomed --pipeline-step sex --study nipoppy_study
 ```
 
-For each of the prediction tasks (brain age regression and biological sex classification), this will write a CSV file (the Fed-BioMed dataset) and a JSON file used to register it on the [Fed-BioMed node](fedbiomed_node.md).
+For each of the prediction tasks (brain age regression and biological sex classification), this will write a CSV file (the Fed-BioMed dataset) and a JSON file used to register it on the [Fed-BioMed node](fedbiomed_node_part_1.md).
 
 ```bash
 tree nipoppy_study/derivatives/nipoppy2fedbiomed
