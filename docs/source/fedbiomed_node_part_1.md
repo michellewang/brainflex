@@ -20,14 +20,16 @@ docker compose up -d
  ✔ Container brainflex-node-default  Started
 ```
 
-The two images are:
+The two services are:
 
 - `vpn`: a WireGuard VPN client that connects to the central VPN server
 - `node`: the [node image](https://hub.docker.com/r/fedbiomed/node) distributed by Fed-BioMed
 
 ### Troubleshooting
 
-<!-- Disk quota exceeded TODO -->
+By default, Docker images are stored on the root disk.
+If you encounter issues with disk storage quota being exceeded, you can configure Docker to use a different directory for storing data.
+This can be done by following e.g. [this guide](https://www.simplified.guide/_export/xhtml/docker/change-data-directory).
 
 ## Check Fed-BioMed node status
 
