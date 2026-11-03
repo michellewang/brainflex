@@ -47,7 +47,7 @@ Node status: NodeState.RUNNING
 
 ## Add datasets to the node
 
-Run the two commands below to register the datasets [created by `nipoppy2fedbiomed`](fedbiomed_dataset.md):
+Run the two commands below to register the datasets [created by `nipoppy2fedbiomed`](fl_ready_dataset.md):
 
 ```bash
 docker compose exec -u fedbiomed node fedbiomed node -p /fbm-node dataset add --file /nipoppy_study/derivatives/nipoppy2fedbiomed/0.1.0/output/age/dataset_info.json
