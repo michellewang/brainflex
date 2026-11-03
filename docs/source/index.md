@@ -21,5 +21,6 @@ initial_setup
 freesurfer_idps
 phenotypic_files
 fedbiomed_dataset
-fedbiomed_node1
+fedbiomed_node_part1
+fedbiomed_node_part2
 ```
