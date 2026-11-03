@@ -34,6 +34,7 @@ The output file at `nipoppy_study/tabular/harmonized.tsv` should have 4 columns 
 head nipoppy_study/tabular/harmonized.tsv
 ```
 
+<!-- markdownlint-disable MD010 -->
 ```{code-block}
 :caption: Example output
 nb:ParticipantID	nb:SessionID	nb:Sex	nb:Age
@@ -47,4 +48,4 @@ sub-7	ses-unnamed	snomed:248153007	50.0
 sub-8	ses-unnamed	snomed:248152002	55.0
 sub-9	ses-unnamed	snomed:248153007	60.0
 ```
-
+<!-- markdownlint-enable MD010 -->

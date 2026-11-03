@@ -20,7 +20,7 @@ scripts/vpn_status
 ## View and approve the training plans
 
 At this point, the Fed-BioMed researcher should have sent 2 training plans to your node.
-This is the custom Python code needed for e.g. data loading and preprocessing. 
+This is the custom Python code needed for e.g. data loading and preprocessing.
 
 Run this to view the training plans (need to run once for each training plan):
 

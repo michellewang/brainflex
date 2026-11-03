@@ -42,6 +42,7 @@ pip install -r requirements.txt
 ## Verify installation
 
 The above step installs three packages/tools:
+
 1. `bagel`: [Neurobagel CLI](https://pypi.org/project/bagel/)
 2. `nipoppy`: [Nipoppy CLI](https://pypi.org/project/nipoppy/)
 3. `brainflex`: Custom helper tool for this project
@@ -84,7 +85,7 @@ For more examples and ideas, visit:
  https://docs.docker.com/get-started/
 ```
 
-If Docker is not installed, see instructions [here](https://docs.docker.com/engine/install/) to install it and make sure to follow the [post-setup instructions](https://docs.docker.com/engine/install/linux-postinstall/).
+If Docker is not installed, see [these instructions](https://docs.docker.com/engine/install/) to install it and make sure to follow the [post-setup instructions](https://docs.docker.com/engine/install/linux-postinstall/).
 
 Also make sure Docker Compose is installed:
 
@@ -107,11 +108,11 @@ If you do not have `sudo` privileges, you will need to ask a system admin do to 
 
 If you get a `permission denied` error, check if your user is in the `docker` group:
 
-```
+```bash
 groups
 ```
 
-If `docker` is not in any of the groups listed, follow instructions [here](https://docs.docker.com/engine/install/linux-postinstall/#add-your-user-to-the-docker-group).
+If `docker` is not in any of the groups listed, follow [this guide](https://docs.docker.com/engine/install/linux-postinstall/#add-your-user-to-the-docker-group) to add it.
 
 ## Network prerequisite
 

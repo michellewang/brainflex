@@ -71,7 +71,7 @@ INFO     [RUN STDOUT]
 INFO     [RUN STDOUT] Missing files
 INFO     [RUN STDOUT]
 INFO     [RUN STDOUT]
-INFO     Ran on the entire study 🎉🎉🎉 
+INFO     Ran on the entire study 🎉🎉🎉
 ```
 
 The pipeline writes a set of files to `nipoppy_study/derivatives/freesurfer/7.3.2/idp`.
