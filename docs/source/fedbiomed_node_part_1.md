@@ -1,14 +1,19 @@
-# Fed-BioMed node (Part 1)
+# Fed-BioMed node: Part 1
 
-## Start the containers
+We will be using [Fed-BioMed](https://fedbiomed.org/) to conduct the federated learning experiment.
+See [this page](https://fedbiomed.org/federated-network/) of the Fed-BioMed website for more information about how it works.
+Essentially, each site participating in the federated experiment needs to deploy a **node**, and the person responsible for running the experiment (i.e. training the models) deploys a server (**researcher** in Fed-BioMed vocabulary) to which all nodes connect to.
+
+## Deploy the node
+
+Run this to download the images (if needed) and start them:
 
 ```bash
 docker compose up -d
 ```
 
-This will download the images (the first time it is run) and start them:
-
 ```{code-block}
+:caption: Output
 [+] Running 3/3
  ✔ Network brainflex-node_default   Created
  ✔ Container brainflex-vpn-default   Healthy
@@ -17,16 +22,56 @@ This will download the images (the first time it is run) and start them:
 
 The two images are:
 
+- `vpn`: a WireGuard VPN client that connects to the central VPN server
+- `node`: the [node image](https://hub.docker.com/r/fedbiomed/node) distributed by Fed-BioMed
 
+### Troubleshooting
 
-2. Send the node's WireGuard public key to the VPN administrator, who registers it on the VPN server:
+<!-- Disk quota exceeded TODO -->
 
-   ```bash
-   docker compose logs vpn | grep 'public key'
-   ```
+## Check Fed-BioMed node status
 
-   The key is kept in `vpn_config/wireguard/wg0.conf` and reused when the containers are restarted.
+```bash
+docker compose exec -u fedbiomed node fedbiomed node -p /fbm-node status
+```
 
-## Troubleshooting
+```{code-block}
+:caption: Example output
+:emphasize-lines: 3
+# Using component located at: /fbm-node #
+2026-11-03 19:27:17,690 fedbiomed INFO - Syslog configuration is disabled or not found in configuration. Disabling syslog logging.
+Node status: NodeState.RUNNING
+```
 
-Disk quota exceeded
+## Add datasets to the node
+
+Run the two commands below to register the datasets [created by `nipoppy2fedbiomed`](fedbiomed_dataset.md):
+
+```bash
+docker compose exec -u fedbiomed node fedbiomed node -p /fbm-node dataset add --file /nipoppy_study/derivatives/nipoppy2fedbiomed/0.1.0/output/age/dataset_info.json
+docker compose exec -u fedbiomed node fedbiomed node -p /fbm-node dataset add --file /nipoppy_study/derivatives/nipoppy2fedbiomed/0.1.0/output/sex/dataset_info.json
+```
+
+Confirm that they have been added:
+
+```bash
+docker compose exec -u fedbiomed node fedbiomed node -p /fbm-node dataset list
+```
+
+## Share the public key with the server
+
+Run this to get the node's public key:
+
+```bash
+docker compose logs vpn | grep 'public key'
+```
+
+This will output something like this:
+
+```{code-block}
+:caption: Output
+brainflex-vpn-default  | info: wireguard public key for this peer: <PUBLIC_KEY>
+```
+
+Copy the public key (or the entire output of the previous command) and send it to us via email.
+Then wait until you hear back before doing [Part 2](fedbiomed_node_part_2).
