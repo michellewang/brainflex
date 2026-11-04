@@ -50,6 +50,14 @@ The above step installs three packages/tools:
 You can verify that they were installed successfully by running `<TOOL_NAME> --help`, where `<TOOL_NAME>` is one of `bagel`, `nipoppy`, and `brainflex`.
 This should print information about the CLI commands and options.
 
+## Initial survey
+
+Answer a short survey about your prior experience with Nipoppy, Neurobagel and Fed-BioMed:
+
+```bash
+brainflex initial-survey
+```
+
 ## Node configuration
 
 ```{attention}

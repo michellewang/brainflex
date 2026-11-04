@@ -7,6 +7,7 @@ import typer
 from brainflex import __version__
 from brainflex.cli.console import render_warnings
 from brainflex.cli.get_data import get_data_cli
+from brainflex.cli.initial_survey import initial_survey_cli
 from brainflex.cli.record import record_cli
 
 app = typer.Typer(
@@ -39,4 +40,5 @@ def main(
 
 
 app.command("get-data")(get_data_cli)
+app.command("initial-survey")(initial_survey_cli)
 app.command("record")(record_cli)
