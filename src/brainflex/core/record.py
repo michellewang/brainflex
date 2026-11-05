@@ -14,8 +14,8 @@ from brainflex.utils.constants import (
     COL_STEP,
     COL_TIMESTAMP,
     QUESTION_NOTES,
-    QUESTION_TIME_WITHOUT_TOOLS,
-    QUESTION_TOOLS_EASIER,
+    QUESTION_TIME_WITHOUT_TOOL_TEMPLATE,
+    QUESTION_TOOL_EASIER_TEMPLATE,
     STEP_SURVEY_COLUMNS,
     STEP_SURVEY_FILENAME,
     TIME_WITHOUT_TOOLS_CHOICES,
@@ -31,7 +31,7 @@ class Step(StrEnum):
 
     IDP_EXTRACTION = "idp_extraction"
     SEMANTIC_HARMONIZATION = "semantic_harmonization"
-    FL_READY_DATA = "fl_ready_data"
+    FL_READY_DATASET = "fl_ready_dataset"
     FEDBIOMED_NODE_PART_1 = "fedbiomed_node_part_1"
     FEDBIOMED_NODE_PART_2 = "fedbiomed_node_part_2"
 
@@ -44,35 +44,36 @@ class Status(StrEnum):
 
 
 DATA_PREP_STEPS = frozenset(
-    {Step.IDP_EXTRACTION, Step.SEMANTIC_HARMONIZATION, Step.FL_READY_DATA}
+    {Step.IDP_EXTRACTION, Step.SEMANTIC_HARMONIZATION, Step.FL_READY_DATASET}
 )
 
-# questions asked at the end of a step, mapped to their allowed answers
-# (None for free text), in the order they are asked
-DATA_PREP_QUESTIONS: dict[str, tuple[str, ...] | None] = {
-    QUESTION_TOOLS_EASIER: TOOLS_EASIER_CHOICES,
-    QUESTION_TIME_WITHOUT_TOOLS: TIME_WITHOUT_TOOLS_CHOICES,
+# tool used in each data preparation step
+STEP_TOOLS: dict[Step, str] = {
+    Step.IDP_EXTRACTION: "Nipoppy",
+    Step.SEMANTIC_HARMONIZATION: "Neurobagel",
+    Step.FL_READY_DATASET: "Nipoppy",
 }
+
 COMMON_QUESTIONS: dict[str, tuple[str, ...] | None] = {QUESTION_NOTES: None}
 
 # high-level summaries of data preparation steps
 STEP_SUMMARIES: dict[Step, str] = {
     Step.IDP_EXTRACTION: (
-        "In this step, you used a script that wraps FreeSurfer tools to:\n- extract "
+        "\nIn this step, you used a script that wraps FreeSurfer tools to:\n- extract "
         "imaging-derived phenotypes (IDPs) (cortical thickness, subcortical volumes, "
         "etc.) from existing FreeSurfer subject directories\n- combine them into "
         "tabular files with standardized structure and column names (shared with every "
         "other site participating in the FL experiment)"
     ),
     Step.SEMANTIC_HARMONIZATION: (
-        "In this step, you created a file containing participant IDs, session IDs, and "
+        "\nIn this step, you created a file containing participant IDs, session IDs, and "
         "demographic information (age, sex) that use standardized column names and "
         "values (shared with every other site participating in the FL experiment), "
         "despite the fact that the original demographic data may have used "
         "different names or values."
     ),
-    Step.FL_READY_DATA: (
-        "In this step, you merged the previously extracted FreeSurfer IDPs and "
+    Step.FL_READY_DATASET: (
+        "\nIn this step, you merged the previously extracted FreeSurfer IDPs and "
         "harmonized phenotypic data into datasets formatted in a way that can be used "
         "directly by the Fed-BioMed federated learning framework. All sites "
         "participating in the FL experiment will have datasets with the same structure "
@@ -81,10 +82,26 @@ STEP_SUMMARIES: dict[Step, str] = {
 }
 
 
+def get_tools_easier_question(step: Step) -> str:
+    """Return the question about whether the tool made a data preparation step easier."""
+    return QUESTION_TOOL_EASIER_TEMPLATE.format(tool=STEP_TOOLS[step])
+
+
+def get_time_without_tools_question(step: Step) -> str:
+    """Return the question about how long a data preparation step would have taken."""
+    return QUESTION_TIME_WITHOUT_TOOL_TEMPLATE.format(tool=STEP_TOOLS[step])
+
+
 def get_step_questions(step: Step) -> dict[str, tuple[str, ...] | None]:
-    """Return the questions asked at the end of a step, mapped to allowed answers."""
+    """Return the questions asked at the end of a step, mapped to allowed answers.
+
+    Allowed answers are None for free text.
+    """
     if step in DATA_PREP_STEPS:
-        return DATA_PREP_QUESTIONS | COMMON_QUESTIONS
+        return {
+            get_tools_easier_question(step): TOOLS_EASIER_CHOICES,
+            get_time_without_tools_question(step): TIME_WITHOUT_TOOLS_CHOICES,
+        } | COMMON_QUESTIONS
     return dict(COMMON_QUESTIONS)
 
 
