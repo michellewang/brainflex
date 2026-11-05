@@ -181,6 +181,8 @@ def _get_freesurfer(
 def _write_pheno(layout: DatasetLayout, session_ids: dict[str, str]) -> None:
     """Copy participants.tsv to the tabular directory, with a session ID column.
 
+    Participant IDs without the ``sub-`` prefix have it prepended.
+
     Rows with an empty participant ID and participants without BIDS imaging
     data are excluded. Warns if participant IDs and BIDS subjects do not fully match,
     and raises ValueError if none match.
@@ -195,6 +197,16 @@ def _write_pheno(layout: DatasetLayout, session_ids: dict[str, str]) -> None:
         reader = csv.DictReader(file, delimiter="\t")
         fieldnames = reader.fieldnames
         rows = [row for row in reader if (row[COL_PARTICIPANT_ID] or "").strip()]
+
+    for row in rows:
+        participant_id = row[COL_PARTICIPANT_ID]
+        if not participant_id.startswith(BIDS_SUBJECT_PREFIX):
+            row[COL_PARTICIPANT_ID] = BIDS_SUBJECT_PREFIX + participant_id
+            warnings.warn(
+                f"Prepended {BIDS_SUBJECT_PREFIX!r} to participant ID"
+                f" {participant_id!r} in {PARTICIPANTS_FILENAME}",
+                stacklevel=3,
+            )
 
     fieldnames = [COL_PARTICIPANT_ID, COL_SESSION_ID] + [
         col for col in fieldnames if col not in (COL_PARTICIPANT_ID, COL_SESSION_ID)
